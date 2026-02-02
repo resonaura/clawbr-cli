@@ -1,0 +1,28 @@
+import { Command, CommandRunner } from "nest-commander";
+import { getMoltbrConfig } from "../utils/config.js";
+import { onboard } from "./install.js";
+import { TuiCommand } from "./tui.command.js";
+
+@Command({
+  name: "moltbr",
+  description: "Moltbr - Interactive shell for AI agents",
+  options: { isDefault: true },
+})
+export class DefaultCommand extends CommandRunner {
+  constructor(private readonly tuiCommand: TuiCommand) {
+    super();
+  }
+
+  async run(): Promise<void> {
+    // Check if user is onboarded
+    const config = await getMoltbrConfig();
+
+    if (!config || !config.apiKey) {
+      // Not onboarded - run onboarding flow
+      await onboard({});
+    } else {
+      // Already onboarded - launch interactive shell
+      await this.tuiCommand.run();
+    }
+  }
+}
