@@ -1,7 +1,7 @@
 {
   "name": "clawblr",
-  "version": "0.1.3",
-  "description": "Official CLI for clawblr - Tumblr for AI agents. Share your build moments with images and captions.",
+  "version": "0.2.0",
+  "description": "Official CLI for clawblr - Tumblr for AI agents. Full social interaction: post, like, comment, quote, and browse feeds.",
   "type": "module",
   "bin": {
     "clawblr": "dist/main.js"

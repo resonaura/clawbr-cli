@@ -62,8 +62,13 @@ interface ShellContext {
 })
 export class TuiCommand extends CommandRunner {
   private context: ShellContext | null = null;
+  private isInPrompt = false;
+  private sigintCount = 0;
+  private sigintTimeout: NodeJS.Timeout | null = null;
 
   async run(): Promise<void> {
+    // Setup Ctrl+C handler
+    this.setupSignalHandlers();
     const config = await getClawblrConfig();
 
     if (!config || !config.apiKey) {
@@ -126,10 +131,12 @@ export class TuiCommand extends CommandRunner {
   private async startShell(): Promise<void> {
     while (this.context!.running) {
       try {
+        this.isInPrompt = true;
         const command = await clack.text({
           message: chalk.cyan(`${this.context!.config.agentName}@clawblr`),
           placeholder: "Enter a command (or 'help' for help)",
         });
+        this.isInPrompt = false;
 
         if (clack.isCancel(command)) {
           this.context!.running = false;
@@ -144,12 +151,64 @@ export class TuiCommand extends CommandRunner {
 
         await this.executeCommand(cmd);
       } catch (error) {
+        if ((error as any).code === "ABORT_ERR" || (error as any).name === "ExitPromptError") {
+          // User pressed Ctrl+C during prompt - just continue
+          this.isInPrompt = false;
+          console.log(); // New line for cleaner output
+          continue;
+        }
         console.log(chalk.red(`Error: ${(error as Error).message}`));
       }
     }
 
+    this.cleanupSignalHandlers();
     await this.showGoodbye();
-    process.exit();
+    process.exit(0);
+  }
+
+  private setupSignalHandlers(): void {
+    // Handle Ctrl+C (SIGINT)
+    const sigintHandler = () => {
+      // If we're in a prompt, let inquirer/clack handle it
+      if (this.isInPrompt) {
+        return;
+      }
+
+      // Double Ctrl+C to force exit
+      this.sigintCount++;
+
+      if (this.sigintCount === 1) {
+        console.log(
+          chalk.yellow("\n\n⚠️  Press Ctrl+C again to exit, or type 'exit' to quit gracefully")
+        );
+
+        // Reset counter after 2 seconds
+        if (this.sigintTimeout) {
+          clearTimeout(this.sigintTimeout);
+        }
+        this.sigintTimeout = setTimeout(() => {
+          this.sigintCount = 0;
+        }, 2000);
+      } else if (this.sigintCount >= 2) {
+        console.log(chalk.red("\n\n👋 Forced exit"));
+        this.cleanupSignalHandlers();
+        process.exit(0);
+      }
+    };
+
+    process.on("SIGINT", sigintHandler);
+
+    // Store handler reference for cleanup
+    (this as any).sigintHandler = sigintHandler;
+  }
+
+  private cleanupSignalHandlers(): void {
+    if ((this as any).sigintHandler) {
+      process.removeListener("SIGINT", (this as any).sigintHandler);
+    }
+    if (this.sigintTimeout) {
+      clearTimeout(this.sigintTimeout);
+    }
   }
 
   private async executeCommand(input: string): Promise<void> {
@@ -240,7 +299,8 @@ export class TuiCommand extends CommandRunner {
 
     try {
       // Image path
-      let filePath = (await clack.text({
+      this.isInPrompt = true;
+      const filePathResult = await clack.text({
         message: "Path to image file",
         placeholder: "./my-build.png (or leave empty to skip)",
         validate: (value) => {
@@ -250,19 +310,29 @@ export class TuiCommand extends CommandRunner {
             return "File not found";
           }
         },
-      })) as string;
+      });
+      this.isInPrompt = false;
 
+      if (clack.isCancel(filePathResult)) {
+        console.log(chalk.yellow("\nPost cancelled"));
+        console.log();
+        return;
+      }
+
+      let filePath = filePathResult as string;
       if (filePath) {
         filePath = filePath.replace(/^['"]|['"]$/g, "");
       }
 
       // Confirmation
+      this.isInPrompt = true;
       const shouldContinue = await clack.confirm({
         message: "Ready to post?",
       });
+      this.isInPrompt = false;
 
       if (!shouldContinue || clack.isCancel(shouldContinue)) {
-        console.log(chalk.yellow("Post cancelled"));
+        console.log(chalk.yellow("\nPost cancelled"));
         console.log();
         return;
       }
@@ -345,8 +415,14 @@ export class TuiCommand extends CommandRunner {
           chalk.cyan(`${this.context!.config.url}/posts/${result.post.id}`)
       );
       console.log();
-    } catch (error) {
-      console.log(chalk.red(`Error: ${(error as Error).message}`));
+    } catch (error: any) {
+      this.isInPrompt = false;
+      if (error.name === "ExitPromptError" || error.code === "ABORT_ERR") {
+        console.log(chalk.yellow("\nPost cancelled"));
+        console.log();
+        return;
+      }
+      console.log(chalk.red(`Error: ${error.message}`));
       console.log();
     }
   }
@@ -357,6 +433,7 @@ export class TuiCommand extends CommandRunner {
     console.log();
 
     try {
+      this.isInPrompt = true;
       const prompt = await clack.text({
         message: "What do you want to generate?",
         placeholder: "A robot building software...",
@@ -364,17 +441,29 @@ export class TuiCommand extends CommandRunner {
           if (!value || value.trim().length === 0) return "Prompt is required";
         },
       });
+      this.isInPrompt = false;
 
-      if (clack.isCancel(prompt)) return;
+      if (clack.isCancel(prompt)) {
+        console.log(chalk.yellow("\nGeneration cancelled"));
+        console.log();
+        return;
+      }
 
+      this.isInPrompt = true;
       const output = await clack.text({
         message: "Where to save the image?",
         placeholder: "./generated-image.png",
         defaultValue: "./generated-image.png",
       });
+      this.isInPrompt = false;
 
-      if (clack.isCancel(output)) return;
+      if (clack.isCancel(output)) {
+        console.log(chalk.yellow("\nGeneration cancelled"));
+        console.log();
+        return;
+      }
 
+      this.isInPrompt = true;
       const size = await clack.select({
         message: "Select image size",
         options: [
@@ -384,8 +473,13 @@ export class TuiCommand extends CommandRunner {
         ],
         initialValue: "1024x1024",
       });
+      this.isInPrompt = false;
 
-      if (clack.isCancel(size)) return;
+      if (clack.isCancel(size)) {
+        console.log(chalk.yellow("\nGeneration cancelled"));
+        console.log();
+        return;
+      }
 
       // Load credentials
       const { homedir } = await import("os");
@@ -550,8 +644,15 @@ export class TuiCommand extends CommandRunner {
 
       console.log(chalk.gray("  💡 Tip: You can now post this image using 'post'"));
       console.log();
-    } catch (error) {
-      console.log(chalk.red(`Error: ${(error as Error).message}`));
+    } catch (error: any) {
+      this.isInPrompt = false;
+      if (error.name === "ExitPromptError" || error.code === "ABORT_ERR") {
+        console.log(chalk.yellow("\nGeneration cancelled"));
+        console.log();
+        return;
+      }
+      console.log(chalk.red(`Error: ${error.message}`));
+      console.log();
     }
   }
 

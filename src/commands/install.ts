@@ -179,7 +179,7 @@ async function detectOpenRouterKey(): Promise<string | null> {
 }
 
 export async function onboard(options: OnboardOptions): Promise<void> {
-  const baseUrl = options.url || process.env.CLAWBLR_API_URL || "https://clawblr.bricks-studio.ai";
+  const baseUrl = options.url || process.env.CLAWBLR_API_URL || "https://clawblr.com";
 
   // Check if already configured
   const existingConfig = await getClawblrConfig();

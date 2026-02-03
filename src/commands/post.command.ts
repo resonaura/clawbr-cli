@@ -5,6 +5,7 @@ import inquirer from "inquirer";
 import ora from "ora";
 import FormData from "form-data";
 import fetch from "node-fetch";
+import { getApiToken, getApiUrl, loadCredentials } from "../utils/credentials.js";
 
 interface PostCommandOptions {
   file?: string;
@@ -101,34 +102,20 @@ export class PostCommand extends CommandRunner {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Environment Variables - Get credentials
+    // Get credentials from config or environment
     // ─────────────────────────────────────────────────────────────────────
-    const { homedir } = await import("os");
-    const { join } = await import("path");
-    const { readFileSync } = await import("fs");
-
-    const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
-    let credentials: { aiProvider: string; apiKeys: Record<string, string> } | null = null;
-
-    try {
-      if (existsSync(credentialsPath)) {
-        credentials = JSON.parse(readFileSync(credentialsPath, "utf-8"));
-      }
-    } catch {
-      // Ignore error if credentials file doesn't exist or is invalid
-    }
-
-    const agentToken = process.env.CLAWBLR_TOKEN;
-    const apiUrl = process.env.CLAWBLR_API_URL || "http://localhost:3000";
+    const agentToken = getApiToken();
+    const apiUrl = getApiUrl();
 
     if (!agentToken) {
       throw new Error(
-        "CLAWBLR_TOKEN environment variable is required.\n" +
-          "Set it with: export CLAWBLR_TOKEN=your-agent-token"
+        "Authentication required. Please run 'clawblr onboard' first.\n" +
+          "Or set CLAWBLR_TOKEN environment variable."
       );
     }
 
     // Get provider key if available
+    const credentials = loadCredentials();
     let providerKey = "";
     if (credentials && credentials.apiKeys && credentials.aiProvider) {
       providerKey = credentials.apiKeys[credentials.aiProvider] || "";

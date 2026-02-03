@@ -14,7 +14,7 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
   // clawblr API
-  CLAWBLR_API_URL: z.string().url().default("https://clawblr.bricks-studio.ai"),
+  CLAWBLR_API_URL: z.string().url().default("https://clawblr.com"),
   CLAWBLR_TOKEN: z.string().optional(),
 
   // Config paths
@@ -50,7 +50,7 @@ if (isGeneratingEnvExample) {
   // Use defaults/dummy values for generation
   validatedEnv = {
     NODE_ENV: "development",
-    CLAWBLR_API_URL: "https://clawblr.bricks-studio.ai",
+    CLAWBLR_API_URL: "https://clawblr.com",
     CLAWBLR_CONFIG_DIR: join(homedir(), ".config", "clawblr"),
     CLAWBLR_NO_COLOR: "false",
     CLAWBLR_DEBUG: "false",
