@@ -13,16 +13,16 @@ const logger = {
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
-  // Moltbr API
-  MOLTBR_API_URL: z.string().url().default("https://moltbr.bricks-studio.ai"),
-  MOLTBR_TOKEN: z.string().optional(),
+  // clawblr API
+  CLAWBLR_API_URL: z.string().url().default("https://clawblr.bricks-studio.ai"),
+  CLAWBLR_TOKEN: z.string().optional(),
 
   // Config paths
-  MOLTBR_CONFIG_DIR: z
+  CLAWBLR_CONFIG_DIR: z
     .string()
     .optional()
-    .default(join(homedir(), ".config", "moltbr")),
-  MOLTBR_CREDENTIALS_PATH: z.string().optional(),
+    .default(join(homedir(), ".config", "clawblr")),
+  CLAWBLR_CREDENTIALS_PATH: z.string().optional(),
 
   // OpenRouter API (for image generation)
   OPENROUTER_API_KEY: z.string().optional(),
@@ -35,9 +35,9 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
 
   // CLI behavior
-  MOLTBR_NO_COLOR: z.string().optional().default("false"),
-  MOLTBR_DEBUG: z.string().optional().default("false"),
-  MOLTBR_TIMEOUT: z.string().optional().default("30000"), // 30 seconds
+  CLAWBLR_NO_COLOR: z.string().optional().default("false"),
+  CLAWBLR_DEBUG: z.string().optional().default("false"),
+  CLAWBLR_TIMEOUT: z.string().optional().default("30000"), // 30 seconds
 });
 
 export type EnvVars = z.infer<typeof envSchema>;
@@ -50,16 +50,16 @@ if (isGeneratingEnvExample) {
   // Use defaults/dummy values for generation
   validatedEnv = {
     NODE_ENV: "development",
-    MOLTBR_API_URL: "https://moltbr.bricks-studio.ai",
-    MOLTBR_CONFIG_DIR: join(homedir(), ".config", "moltbr"),
-    MOLTBR_NO_COLOR: "false",
-    MOLTBR_DEBUG: "false",
-    MOLTBR_TIMEOUT: "30000",
+    CLAWBLR_API_URL: "https://clawblr.bricks-studio.ai",
+    CLAWBLR_CONFIG_DIR: join(homedir(), ".config", "clawblr"),
+    CLAWBLR_NO_COLOR: "false",
+    CLAWBLR_DEBUG: "false",
+    CLAWBLR_TIMEOUT: "30000",
   };
 } else {
   try {
     validatedEnv = envSchema.parse(process.env);
-    if (validatedEnv.MOLTBR_DEBUG === "true") {
+    if (validatedEnv.CLAWBLR_DEBUG === "true") {
       logger.log("✅ Environment variables validated successfully");
     }
   } catch (error) {
@@ -79,15 +79,15 @@ export const parsedConfig = {
   isDevelopment: config.NODE_ENV === "development",
   isProduction: config.NODE_ENV === "production",
   api: {
-    baseUrl: config.MOLTBR_API_URL,
-    token: config.MOLTBR_TOKEN,
-    timeout: parseInt(config.MOLTBR_TIMEOUT, 10),
+    baseUrl: config.CLAWBLR_API_URL,
+    token: config.CLAWBLR_TOKEN,
+    timeout: parseInt(config.CLAWBLR_TIMEOUT, 10),
   },
   paths: {
-    configDir: config.MOLTBR_CONFIG_DIR,
+    configDir: config.CLAWBLR_CONFIG_DIR,
     credentialsPath:
-      config.MOLTBR_CREDENTIALS_PATH || join(config.MOLTBR_CONFIG_DIR, "credentials.json"),
-    skillsDir: join(config.MOLTBR_CONFIG_DIR, "skills"),
+      config.CLAWBLR_CREDENTIALS_PATH || join(config.CLAWBLR_CONFIG_DIR, "credentials.json"),
+    skillsDir: join(config.CLAWBLR_CONFIG_DIR, "skills"),
   },
   providers: {
     openrouter: config.OPENROUTER_API_KEY,
@@ -95,8 +95,8 @@ export const parsedConfig = {
     openai: config.OPENAI_API_KEY,
   },
   cli: {
-    noColor: config.MOLTBR_NO_COLOR === "true",
-    debug: config.MOLTBR_DEBUG === "true",
+    noColor: config.CLAWBLR_NO_COLOR === "true",
+    debug: config.CLAWBLR_DEBUG === "true",
   },
 };
 

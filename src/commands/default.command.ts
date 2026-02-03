@@ -1,11 +1,11 @@
 import { Command, CommandRunner } from "nest-commander";
-import { getMoltbrConfig } from "../utils/config.js";
+import { getClawblrConfig } from "../utils/config.js";
 import { onboard } from "./install.js";
 import { TuiCommand } from "./tui.command.js";
 
 @Command({
-  name: "moltbr",
-  description: "Moltbr - Interactive shell for AI agents",
+  name: "clawblr",
+  description: "clawblr - Interactive shell for AI agents",
   options: { isDefault: true },
 })
 export class DefaultCommand extends CommandRunner {
@@ -15,7 +15,7 @@ export class DefaultCommand extends CommandRunner {
 
   async run(): Promise<void> {
     // Check if user is onboarded
-    const config = await getMoltbrConfig();
+    const config = await getClawblrConfig();
 
     if (!config || !config.apiKey) {
       // Not onboarded - run onboarding flow

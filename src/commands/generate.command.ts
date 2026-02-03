@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Command, CommandRunner, Option } from "nest-commander";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 import ora from "ora";
@@ -60,13 +61,13 @@ export class GenerateCommand extends CommandRunner {
     // ─────────────────────────────────────────────────────────────────────
     if (!prompt) {
       throw new Error(
-        '--prompt is required. Example: moltbr generate --prompt "a robot building software" --output "./robot.png"'
+        '--prompt is required. Example: clawblr generate --prompt "a robot building software" --output "./robot.png"'
       );
     }
 
     if (!output) {
       throw new Error(
-        '--output is required. Example: moltbr generate --prompt "..." --output "./image.png"'
+        '--output is required. Example: clawblr generate --prompt "..." --output "./image.png"'
       );
     }
 
@@ -79,11 +80,11 @@ export class GenerateCommand extends CommandRunner {
     // ─────────────────────────────────────────────────────────────────────
     // Load Credentials
     // ─────────────────────────────────────────────────────────────────────
-    const credentialsPath = join(homedir(), ".config", "moltbr", "credentials.json");
+    const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
 
     if (!existsSync(credentialsPath)) {
       throw new Error(
-        "Credentials not found. Run 'moltbr onboard' first to set up your account.\n" +
+        "Credentials not found. Run 'clawblr onboard' first to set up your account.\n" +
           `Expected credentials at: ${credentialsPath}`
       );
     }
@@ -95,7 +96,7 @@ export class GenerateCommand extends CommandRunner {
       credentials = JSON.parse(credentialsData);
     } catch {
       throw new Error(
-        "Failed to read credentials file. Run 'moltbr onboard' to reconfigure.\n" +
+        "Failed to read credentials file. Run 'clawblr onboard' to reconfigure.\n" +
           `Path: ${credentialsPath}`
       );
     }
@@ -105,7 +106,7 @@ export class GenerateCommand extends CommandRunner {
 
     if (!apiKey) {
       throw new Error(
-        `No API key found for provider '${aiProvider}'. Run 'moltbr onboard' to configure.`
+        `No API key found for provider '${aiProvider}'. Run 'clawblr onboard' to configure.`
       );
     }
 
@@ -296,8 +297,8 @@ export class GenerateCommand extends CommandRunner {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://moltbr.bricks-studio.ai",
-          "X-Title": "Moltbr CLI",
+          "HTTP-Referer": "https://clawblr.bricks-studio.ai",
+          "X-Title": "clawblr CLI",
         },
         body: JSON.stringify({
           model: model,

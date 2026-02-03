@@ -1,7 +1,7 @@
-import { homedir } from 'os';
-import { join } from 'path';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { homedir } from "os";
+import { join } from "path";
+import { readFile, writeFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
 
 export interface OpenClawConfig {
   env?: {
@@ -9,7 +9,7 @@ export interface OpenClawConfig {
   };
 }
 
-export interface MoltbrConfig {
+export interface ClawblrConfig {
   url: string;
   apiKey: string;
   agentName: string;
@@ -17,7 +17,7 @@ export interface MoltbrConfig {
 }
 
 export function getConfigPath(): string {
-  return join(homedir(), '.openclaw', 'openclaw.json');
+  return join(homedir(), ".openclaw", "openclaw.json");
 }
 
 export async function loadConfig(): Promise<OpenClawConfig> {
@@ -28,7 +28,7 @@ export async function loadConfig(): Promise<OpenClawConfig> {
   }
 
   try {
-    const content = await readFile(configPath, 'utf-8');
+    const content = await readFile(configPath, "utf-8");
     return JSON.parse(content);
   } catch {
     return { env: { vars: {} } };
@@ -37,17 +37,17 @@ export async function loadConfig(): Promise<OpenClawConfig> {
 
 export async function saveConfig(config: OpenClawConfig): Promise<void> {
   const configPath = getConfigPath();
-  const configDir = join(homedir(), '.openclaw');
+  const configDir = join(homedir(), ".openclaw");
 
   // Ensure directory exists
   if (!existsSync(configDir)) {
     await mkdir(configDir, { recursive: true });
   }
 
-  await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+  await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
-export async function updateMoltbrConfig(moltbrConfig: Partial<MoltbrConfig>): Promise<void> {
+export async function updateClawblrConfig(clawblrConfig: Partial<ClawblrConfig>): Promise<void> {
   const config = await loadConfig();
 
   if (!config.env) {
@@ -57,34 +57,34 @@ export async function updateMoltbrConfig(moltbrConfig: Partial<MoltbrConfig>): P
     config.env.vars = {};
   }
 
-  if (moltbrConfig.url) {
-    config.env.vars.MOLTBR_URL = moltbrConfig.url;
+  if (clawblrConfig.url) {
+    config.env.vars.CLAWBLR_URL = clawblrConfig.url;
   }
-  if (moltbrConfig.apiKey) {
-    config.env.vars.MOLTBR_API_KEY = moltbrConfig.apiKey;
+  if (clawblrConfig.apiKey) {
+    config.env.vars.CLAWBLR_API_KEY = clawblrConfig.apiKey;
   }
-  if (moltbrConfig.agentName) {
-    config.env.vars.MOLTBR_AGENT_NAME = moltbrConfig.agentName;
+  if (clawblrConfig.agentName) {
+    config.env.vars.CLAWBLR_AGENT_NAME = clawblrConfig.agentName;
   }
-  if (moltbrConfig.geminiApiKey) {
-    config.env.vars.GEMINI_API_KEY = moltbrConfig.geminiApiKey;
+  if (clawblrConfig.geminiApiKey) {
+    config.env.vars.GEMINI_API_KEY = clawblrConfig.geminiApiKey;
   }
 
   await saveConfig(config);
 }
 
-export async function getMoltbrConfig(): Promise<MoltbrConfig | null> {
+export async function getClawblrConfig(): Promise<ClawblrConfig | null> {
   const config = await loadConfig();
   const vars = config.env?.vars || {};
 
-  if (!vars.MOLTBR_URL || !vars.MOLTBR_API_KEY) {
+  if (!vars.CLAWBLR_URL || !vars.CLAWBLR_API_KEY) {
     return null;
   }
 
   return {
-    url: vars.MOLTBR_URL,
-    apiKey: vars.MOLTBR_API_KEY,
-    agentName: vars.MOLTBR_AGENT_NAME || 'Unknown Agent',
+    url: vars.CLAWBLR_URL,
+    apiKey: vars.CLAWBLR_API_KEY,
+    agentName: vars.CLAWBLR_AGENT_NAME || "Unknown Agent",
     geminiApiKey: vars.GEMINI_API_KEY,
   };
 }

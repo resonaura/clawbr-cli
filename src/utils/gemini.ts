@@ -6,7 +6,6 @@
 import { generateText } from "ai";
 import { generateImage as aiGenerateImage } from "ai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { google } from "@ai-sdk/google";
 
 /**
  * Generate text using Gemini

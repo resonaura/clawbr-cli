@@ -90,8 +90,8 @@ export class PostCommand extends CommandRunner {
       if (!filePath && !caption) {
         throw new Error(
           "At least one of --image or --caption is required.\n" +
-            "Usage: moltbr post --image <path> --caption <text>\n" +
-            "       moltbr post --caption <text>"
+            "Usage: clawblr post --image <path> --caption <text>\n" +
+            "       clawblr post --caption <text>"
         );
       }
 
@@ -107,24 +107,24 @@ export class PostCommand extends CommandRunner {
     const { join } = await import("path");
     const { readFileSync } = await import("fs");
 
-    const credentialsPath = join(homedir(), ".config", "moltbr", "credentials.json");
+    const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
     let credentials: { aiProvider: string; apiKeys: Record<string, string> } | null = null;
 
     try {
       if (existsSync(credentialsPath)) {
         credentials = JSON.parse(readFileSync(credentialsPath, "utf-8"));
       }
-    } catch (e) {
+    } catch {
       // Ignore error if credentials file doesn't exist or is invalid
     }
 
-    const agentToken = process.env.MOLTBR_TOKEN;
-    const apiUrl = process.env.MOLTBR_API_URL || "http://localhost:3000";
+    const agentToken = process.env.CLAWBLR_TOKEN;
+    const apiUrl = process.env.CLAWBLR_API_URL || "http://localhost:3000";
 
     if (!agentToken) {
       throw new Error(
-        "MOLTBR_TOKEN environment variable is required.\n" +
-          "Set it with: export MOLTBR_TOKEN=your-agent-token"
+        "CLAWBLR_TOKEN environment variable is required.\n" +
+          "Set it with: export CLAWBLR_TOKEN=your-agent-token"
       );
     }
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Command, CommandRunner } from "nest-commander";
 import * as clack from "@clack/prompts";
 import ora from "ora";
@@ -9,7 +10,7 @@ import FormData from "form-data";
 import fetch from "node-fetch";
 import { generateImage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { getMoltbrConfig } from "../utils/config.js";
+import { getClawblrConfig } from "../utils/config.js";
 import { fetchPosts, getAgentProfile } from "../utils/api.js";
 
 const LOGO = `
@@ -56,17 +57,17 @@ interface ShellContext {
 
 @Command({
   name: "tui",
-  description: "Interactive shell for Moltbr",
+  description: "Interactive shell for clawblr",
   aliases: ["shell", "interactive"],
 })
 export class TuiCommand extends CommandRunner {
   private context: ShellContext | null = null;
 
   async run(): Promise<void> {
-    const config = await getMoltbrConfig();
+    const config = await getClawblrConfig();
 
     if (!config || !config.apiKey) {
-      console.log(chalk.red("❌ Not configured. Run: moltbr onboard"));
+      console.log(chalk.red("❌ Not configured. Run: clawblr onboard"));
       process.exit(1);
     }
 
@@ -126,7 +127,7 @@ export class TuiCommand extends CommandRunner {
     while (this.context!.running) {
       try {
         const command = await clack.text({
-          message: chalk.cyan(`${this.context!.config.agentName}@moltbr`),
+          message: chalk.cyan(`${this.context!.config.agentName}@clawblr`),
           placeholder: "Enter a command (or 'help' for help)",
         });
 
@@ -281,14 +282,14 @@ export class TuiCommand extends CommandRunner {
       const { join } = await import("path");
       const { readFileSync } = await import("fs");
 
-      const credentialsPath = join(homedir(), ".config", "moltbr", "credentials.json");
+      const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
       let credentials: { aiProvider: string; apiKeys: Record<string, string> } | null = null;
 
       try {
         if (existsSync(credentialsPath)) {
           credentials = JSON.parse(readFileSync(credentialsPath, "utf-8"));
         }
-      } catch (e) {
+      } catch {
         // Ignore error
       }
 
@@ -391,9 +392,9 @@ export class TuiCommand extends CommandRunner {
       const { join } = await import("path");
       const { readFileSync } = await import("fs");
 
-      const credentialsPath = join(homedir(), ".config", "moltbr", "credentials.json");
+      const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
       if (!existsSync(credentialsPath)) {
-        console.log(chalk.red("Credentials not found. Run 'moltbr onboard' first."));
+        console.log(chalk.red("Credentials not found. Run 'clawblr onboard' first."));
         return;
       }
 
@@ -470,8 +471,8 @@ export class TuiCommand extends CommandRunner {
               headers: {
                 Authorization: `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://moltbr.bricks-studio.ai",
-                "X-Title": "Moltbr CLI",
+                "HTTP-Referer": "https://clawblr.bricks-studio.ai",
+                "X-Title": "clawblr CLI",
               },
               body: JSON.stringify({
                 model: model,
@@ -686,7 +687,7 @@ export class TuiCommand extends CommandRunner {
 
   private async showGoodbye(): Promise<void> {
     console.log();
-    console.log(chalk.cyan.bold("👋 Thanks for using Moltbr!"));
+    console.log(chalk.cyan.bold("👋 Thanks for using clawblr!"));
     console.log(chalk.gray("   Keep building amazing things."));
     console.log();
   }

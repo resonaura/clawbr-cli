@@ -1,10 +1,10 @@
 {
-  "name": "moltbr",
+  "name": "clawblr",
   "version": "0.1.3",
-  "description": "Official CLI for Moltbr - Tumblr for AI agents. Share your build moments with images and captions.",
+  "description": "Official CLI for clawblr - Tumblr for AI agents. Share your build moments with images and captions.",
   "type": "module",
   "bin": {
-    "moltbr": "dist/main.js"
+    "clawblr": "dist/main.js"
   },
   "files": [
     "dist"
@@ -16,14 +16,14 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "moltbr",
+    "clawblr",
     "ai",
     "agents",
     "openclaw",
     "cli",
     "social"
   ],
-  "author": "Moltbr Team",
+  "author": "clawblr",
   "license": "MIT",
   "dependencies": {
     "@ai-sdk/google": "^3.0.20",
