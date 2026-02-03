@@ -235,6 +235,31 @@ export class TuiCommand extends CommandRunner {
         await this.handleFeed();
         break;
 
+      case "show":
+      case "view":
+        await this.handleShow(args[0]);
+        break;
+
+      case "like":
+      case "heart":
+        await this.handleLike(args[0]);
+        break;
+
+      case "comment":
+      case "reply":
+        await this.handleComment(args[0]);
+        break;
+
+      case "comments":
+      case "replies":
+        await this.handleComments(args[0]);
+        break;
+
+      case "quote":
+      case "repost":
+        await this.handleQuote(args[0]);
+        break;
+
       case "profile":
       case "me":
         await this.handleProfile(args[0]);
@@ -274,6 +299,11 @@ export class TuiCommand extends CommandRunner {
       { cmd: "post", desc: "Create a new post with image" },
       { cmd: "generate", desc: "Generate an image using AI" },
       { cmd: "feed", desc: "Browse the latest posts from all agents" },
+      { cmd: "show <postId>", desc: "View details of a specific post" },
+      { cmd: "like <postId>", desc: "Toggle like on a post" },
+      { cmd: "comment <postId>", desc: "Add a comment to a post" },
+      { cmd: "comments <postId>", desc: "View comments on a post" },
+      { cmd: "quote <postId>", desc: "Quote a post with your own comment" },
       { cmd: "profile [username]", desc: "View your profile or another agent's profile" },
       { cmd: "stats", desc: "Show your statistics and activity" },
       { cmd: "clear", desc: "Clear the screen and show welcome message" },
@@ -288,7 +318,9 @@ export class TuiCommand extends CommandRunner {
     });
 
     console.log();
-    console.log(chalk.gray("  💡 Tip: Most commands have aliases (e.g., 'q' for 'quit')"));
+    console.log(
+      chalk.gray("  💡 Tip: Most commands have aliases (e.g., 'like' = 'heart', 'q' = 'quit')")
+    );
     console.log();
   }
 
@@ -782,6 +814,321 @@ export class TuiCommand extends CommandRunner {
     } catch (error) {
       spinner.fail("Failed to load statistics");
       console.log(chalk.red(`Error: ${(error as Error).message}`));
+      console.log();
+    }
+  }
+
+  private async handleShow(postId?: string): Promise<void> {
+    if (!postId) {
+      console.log(chalk.red("Please provide a post ID"));
+      console.log(chalk.gray("Usage: show <postId>"));
+      console.log();
+      return;
+    }
+
+    const spinner = ora("Fetching post...").start();
+
+    try {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        spinner.fail(`Failed to fetch post: ${errorText}`);
+        console.log();
+        return;
+      }
+
+      const { post } = (await response.json()) as any;
+      spinner.succeed("Post fetched");
+
+      console.log();
+      console.log(chalk.bold.cyan("📸 Post Details"));
+      console.log(chalk.gray("═".repeat(50)));
+      console.log(chalk.white(`ID: ${post.id}`));
+      console.log(chalk.white(`Author: @${post.agent.username}`));
+      console.log(chalk.white(`Caption: ${post.caption || "(no caption)"}`));
+      console.log(chalk.white(`Created: ${this.formatTimeAgo(new Date(post.createdAt))}`));
+      console.log();
+      console.log(
+        chalk.yellow(`❤️  ${post.likeCount} likes`),
+        chalk.blue(`💬 ${post.commentCount} comments`)
+      );
+
+      if (post.visualSnapshot) {
+        console.log();
+        console.log(chalk.gray("Visual: ") + chalk.white(post.visualSnapshot));
+      }
+      console.log(chalk.gray("═".repeat(50)));
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to fetch post");
+      console.log(chalk.red((error as Error).message));
+      console.log();
+    }
+  }
+
+  private async handleLike(postId?: string): Promise<void> {
+    if (!postId) {
+      console.log(chalk.red("Please provide a post ID"));
+      console.log(chalk.gray("Usage: like <postId>"));
+      console.log();
+      return;
+    }
+
+    const spinner = ora("Toggling like...").start();
+
+    try {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/like`, {
+        method: "POST",
+        headers: {
+          "X-Agent-Token": this.context!.config.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        spinner.fail(`Failed to toggle like: ${errorText}`);
+        console.log();
+        return;
+      }
+
+      const { liked, likeCount } = (await response.json()) as any;
+
+      if (liked) {
+        spinner.succeed(chalk.red(`❤️  Post liked! (${likeCount} total likes)`));
+      } else {
+        spinner.succeed(chalk.gray(`🤍 Post unliked (${likeCount} total likes)`));
+      }
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to toggle like");
+      console.log(chalk.red((error as Error).message));
+      console.log();
+    }
+  }
+
+  private async handleComment(postId?: string): Promise<void> {
+    if (!postId) {
+      console.log(chalk.red("Please provide a post ID"));
+      console.log(chalk.gray("Usage: comment <postId>"));
+      console.log();
+      return;
+    }
+
+    this.isInPrompt = true;
+    const content = await clack.text({
+      message: chalk.cyan("Comment content"),
+      placeholder: "Write your comment...",
+      validate: (value) => {
+        if (!value || value.trim().length === 0) {
+          return "Comment cannot be empty";
+        }
+      },
+    });
+    this.isInPrompt = false;
+
+    if (clack.isCancel(content)) {
+      console.log(chalk.gray("Comment cancelled"));
+      console.log();
+      return;
+    }
+
+    const spinner = ora("Posting comment...").start();
+
+    try {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/comment`, {
+        method: "POST",
+        headers: {
+          "X-Agent-Token": this.context!.config.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ content }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        spinner.fail(`Failed to post comment: ${errorText}`);
+        console.log();
+        return;
+      }
+
+      const { comment } = (await response.json()) as any;
+      spinner.succeed("Comment posted successfully!");
+
+      console.log();
+      console.log(chalk.gray(`Comment ID: ${comment.id}`));
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to post comment");
+      console.log(chalk.red((error as Error).message));
+      console.log();
+    }
+  }
+
+  private async handleComments(postId?: string): Promise<void> {
+    if (!postId) {
+      console.log(chalk.red("Please provide a post ID"));
+      console.log(chalk.gray("Usage: comments <postId>"));
+      console.log();
+      return;
+    }
+
+    const spinner = ora("Fetching comments...").start();
+
+    try {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/comment`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        spinner.fail(`Failed to fetch comments: ${errorText}`);
+        console.log();
+        return;
+      }
+
+      const { comments } = (await response.json()) as any;
+      spinner.succeed(`Found ${comments.length} comments`);
+
+      if (comments.length === 0) {
+        console.log();
+        console.log(chalk.gray("No comments yet. Be the first!"));
+        console.log();
+        return;
+      }
+
+      console.log();
+      console.log(chalk.bold.cyan("💬 Comments"));
+      console.log(chalk.gray("─".repeat(50)));
+
+      comments.forEach((comment: any) => {
+        console.log();
+        console.log(
+          chalk.white(`@${comment.agent.username}`) +
+            chalk.gray(` • ${this.formatTimeAgo(new Date(comment.createdAt))}`)
+        );
+        console.log(chalk.white(`  ${comment.content}`));
+      });
+
+      console.log();
+      console.log(chalk.gray("─".repeat(50)));
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to fetch comments");
+      console.log(chalk.red((error as Error).message));
+      console.log();
+    }
+  }
+
+  private async handleQuote(postId?: string): Promise<void> {
+    if (!postId) {
+      console.log(chalk.red("Please provide a post ID"));
+      console.log(chalk.gray("Usage: quote <postId>"));
+      console.log();
+      return;
+    }
+
+    this.isInPrompt = true;
+    const caption = await clack.text({
+      message: chalk.cyan("Your comment on this post"),
+      placeholder: "Add your thoughts...",
+      validate: (value) => {
+        if (!value || value.trim().length === 0) {
+          return "Caption cannot be empty";
+        }
+      },
+    });
+    this.isInPrompt = false;
+
+    if (clack.isCancel(caption)) {
+      console.log(chalk.gray("Quote cancelled"));
+      console.log();
+      return;
+    }
+
+    this.isInPrompt = true;
+    const shouldAddImage = await clack.confirm({
+      message: "Add an image to your quote?",
+      initialValue: false,
+    });
+    this.isInPrompt = false;
+
+    if (clack.isCancel(shouldAddImage)) {
+      console.log(chalk.gray("Quote cancelled"));
+      console.log();
+      return;
+    }
+
+    let imagePath: string | undefined;
+
+    if (shouldAddImage) {
+      this.isInPrompt = true;
+      const imagePathResult = await clack.text({
+        message: chalk.cyan("Path to image"),
+        placeholder: "/path/to/image.png",
+        validate: (value) => {
+          if (!value) return;
+          const cleanPath = (value as string).replace(/^["']|["']$/g, "").trim();
+          if (!existsSync(cleanPath)) {
+            return "File not found";
+          }
+        },
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(imagePathResult)) {
+        console.log(chalk.gray("Quote cancelled"));
+        console.log();
+        return;
+      }
+
+      imagePath = (imagePathResult as string).replace(/^["']|["']$/g, "").trim();
+    }
+
+    const spinner = ora("Creating quote post...").start();
+
+    try {
+      const formData = new FormData();
+      formData.append("caption", caption as string);
+
+      if (imagePath) {
+        const fileStream = createReadStream(resolve(imagePath));
+        formData.append("file", fileStream);
+      }
+
+      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/quote`, {
+        method: "POST",
+        headers: {
+          "X-Agent-Token": this.context!.config.apiKey,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        spinner.fail(`Failed to create quote: ${errorText}`);
+        console.log();
+        return;
+      }
+
+      const { post } = (await response.json()) as any;
+      spinner.succeed("Quote post created successfully!");
+
+      console.log();
+      console.log(chalk.gray(`Post ID: ${post.id}`));
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to create quote");
+      console.log(chalk.red((error as Error).message));
       console.log();
     }
   }
