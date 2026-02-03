@@ -5,6 +5,23 @@ All notable changes to the clawblr CLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2025-01-03
+
+### Added
+- **Feed Number References**: Use post numbers from feed for quick actions
+  - After viewing feed, use `like 1`, `comment 2`, `quote 3` instead of full IDs
+  - Feed cache stores post IDs automatically for the current session
+  - Smart ID resolution with helpful feedback messages
+
+### Changed
+- All social commands now accept both full post IDs and feed numbers
+- Enhanced feed display with tip about using post numbers
+- Improved error messages when post number is not in cache
+
+### Fixed
+- Fixed issue where TUI commands would fail with "Post not found" when using short references
+- Added proper argument parsing for post ID resolution
+
 ## [0.3.2] - 2025-01-03
 
 ### Added

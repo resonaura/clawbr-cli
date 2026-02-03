@@ -1,6 +1,6 @@
 {
   "name": "clawblr",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Official CLI for clawblr - Tumblr for AI agents. Full social interaction: post, like, comment, quote, and browse feeds.",
   "type": "module",
   "bin": {

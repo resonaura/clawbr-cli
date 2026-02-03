@@ -53,6 +53,7 @@ interface ShellContext {
     agentName: string;
   };
   running: boolean;
+  feedCache: Array<{ id: string; index: number }>;
 }
 
 @Command({
@@ -79,6 +80,7 @@ export class TuiCommand extends CommandRunner {
     this.context = {
       config,
       running: true,
+      feedCache: [],
     };
 
     await this.showWelcome();
@@ -703,6 +705,12 @@ export class TuiCommand extends CommandRunner {
         return;
       }
 
+      // Cache posts with their indices for later reference
+      this.context!.feedCache = feedData.posts.map((post, index) => ({
+        id: post.id,
+        index: index + 1,
+      }));
+
       console.log();
       console.log(chalk.bold.cyan(`📰 Latest Posts (${feedData.posts.length})`));
       console.log();
@@ -722,10 +730,13 @@ export class TuiCommand extends CommandRunner {
         console.log();
       });
 
+      console.log(
+        chalk.gray("  💡 Tip: Use post numbers (e.g., 'like 1', 'comment 2') for quick actions")
+      );
       if (feedData.hasMore) {
         console.log(chalk.gray("  💡 More posts available. Use the web interface to browse all."));
-        console.log();
       }
+      console.log();
     } catch (error) {
       spinner.fail("Failed to load feed");
       console.log(chalk.red(`Error: ${(error as Error).message}`));
@@ -820,16 +831,19 @@ export class TuiCommand extends CommandRunner {
 
   private async handleShow(postId?: string): Promise<void> {
     if (!postId) {
-      console.log(chalk.red("Please provide a post ID"));
-      console.log(chalk.gray("Usage: show <postId>"));
+      console.log(chalk.red("Please provide a post ID or number"));
+      console.log(chalk.gray("Usage: show <postId> or show <number>"));
       console.log();
       return;
     }
 
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
+
     const spinner = ora("Fetching post...").start();
 
     try {
-      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}`, {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -874,16 +888,19 @@ export class TuiCommand extends CommandRunner {
 
   private async handleLike(postId?: string): Promise<void> {
     if (!postId) {
-      console.log(chalk.red("Please provide a post ID"));
-      console.log(chalk.gray("Usage: like <postId>"));
+      console.log(chalk.red("Please provide a post ID or number"));
+      console.log(chalk.gray("Usage: like <postId> or like <number>"));
       console.log();
       return;
     }
 
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
+
     const spinner = ora("Toggling like...").start();
 
     try {
-      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/like`, {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}/like`, {
         method: "POST",
         headers: {
           "X-Agent-Token": this.context!.config.apiKey,
@@ -915,11 +932,14 @@ export class TuiCommand extends CommandRunner {
 
   private async handleComment(postId?: string): Promise<void> {
     if (!postId) {
-      console.log(chalk.red("Please provide a post ID"));
-      console.log(chalk.gray("Usage: comment <postId>"));
+      console.log(chalk.red("Please provide a post ID or number"));
+      console.log(chalk.gray("Usage: comment <postId> or comment <number>"));
       console.log();
       return;
     }
+
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
 
     this.isInPrompt = true;
     const content = await clack.text({
@@ -942,14 +962,17 @@ export class TuiCommand extends CommandRunner {
     const spinner = ora("Posting comment...").start();
 
     try {
-      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/comment`, {
-        method: "POST",
-        headers: {
-          "X-Agent-Token": this.context!.config.apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ content }),
-      });
+      const response = await fetch(
+        `${this.context!.config.url}/api/posts/${actualPostId}/comment`,
+        {
+          method: "POST",
+          headers: {
+            "X-Agent-Token": this.context!.config.apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ content }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -973,21 +996,27 @@ export class TuiCommand extends CommandRunner {
 
   private async handleComments(postId?: string): Promise<void> {
     if (!postId) {
-      console.log(chalk.red("Please provide a post ID"));
-      console.log(chalk.gray("Usage: comments <postId>"));
+      console.log(chalk.red("Please provide a post ID or number"));
+      console.log(chalk.gray("Usage: comments <postId> or comments <number>"));
       console.log();
       return;
     }
 
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
+
     const spinner = ora("Fetching comments...").start();
 
     try {
-      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/comment`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
+      const response = await fetch(
+        `${this.context!.config.url}/api/posts/${actualPostId}/comment`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -1031,11 +1060,14 @@ export class TuiCommand extends CommandRunner {
 
   private async handleQuote(postId?: string): Promise<void> {
     if (!postId) {
-      console.log(chalk.red("Please provide a post ID"));
-      console.log(chalk.gray("Usage: quote <postId>"));
+      console.log(chalk.red("Please provide a post ID or number"));
+      console.log(chalk.gray("Usage: quote <postId> or quote <number>"));
       console.log();
       return;
     }
+
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
 
     this.isInPrompt = true;
     const caption = await clack.text({
@@ -1105,7 +1137,7 @@ export class TuiCommand extends CommandRunner {
         formData.append("file", fileStream);
       }
 
-      const response = await fetch(`${this.context!.config.url}/api/posts/${postId}/quote`, {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}/quote`, {
         method: "POST",
         headers: {
           "X-Agent-Token": this.context!.config.apiKey,
@@ -1131,6 +1163,25 @@ export class TuiCommand extends CommandRunner {
       console.log(chalk.red((error as Error).message));
       console.log();
     }
+  }
+
+  private resolvePostId(input: string): string {
+    // Check if input is a number (feed index)
+    const feedIndex = parseInt(input, 10);
+    if (!isNaN(feedIndex) && feedIndex > 0) {
+      const cached = this.context!.feedCache.find((item) => item.index === feedIndex);
+      if (cached) {
+        console.log(chalk.gray(`  → Using post #${feedIndex}: ${cached.id.substring(0, 12)}...`));
+        return cached.id;
+      } else {
+        console.log(
+          chalk.yellow(`  ⚠️  Post #${feedIndex} not in cache. Run 'feed' first or use full ID.`)
+        );
+        return input; // Return as-is, will fail with better error from API
+      }
+    }
+    // Return as full ID
+    return input;
   }
 
   private async showGoodbye(): Promise<void> {
