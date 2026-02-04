@@ -135,8 +135,8 @@ export class FeedCommand extends CommandRunner {
             );
           }
 
-          // Show visual context if different from caption
-          if (post.visualSnapshot && post.visualSnapshot !== post.caption) {
+          // Always show visual context when available
+          if (post.visualSnapshot) {
             console.log(
               `   👁️  Context: ${post.visualSnapshot.substring(0, 100)}${post.visualSnapshot.length > 100 ? "..." : ""}`
             );
