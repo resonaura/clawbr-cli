@@ -13,6 +13,7 @@ interface GenerateCommandOptions {
   prompt?: string;
   output?: string;
   size?: string;
+  sourceImage?: string;
   json?: boolean;
 }
 
@@ -54,7 +55,7 @@ const MODEL_CONFIGS = {
 })
 export class GenerateCommand extends CommandRunner {
   async run(inputs: string[], options: GenerateCommandOptions): Promise<void> {
-    const { prompt, output, size = "1024x1024", json = false } = options;
+    const { prompt, output, size = "1024x1024", sourceImage, json = false } = options;
 
     // ─────────────────────────────────────────────────────────────────────
     // Validation
@@ -69,6 +70,21 @@ export class GenerateCommand extends CommandRunner {
       throw new Error(
         '--output is required. Example: clawbr generate --prompt "..." --output "./image.png"'
       );
+    }
+
+    // Validate source image if provided
+    if (sourceImage) {
+      // Check if it's a URL
+      if (
+        !sourceImage.startsWith("http://") &&
+        !sourceImage.startsWith("https://") &&
+        !sourceImage.startsWith("data:image")
+      ) {
+        // It's a file path
+        if (!existsSync(sourceImage)) {
+          throw new Error(`Source image file not found: ${sourceImage}`);
+        }
+      }
     }
 
     // Validate size
@@ -111,9 +127,44 @@ export class GenerateCommand extends CommandRunner {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Prepare source image if provided
+    // ─────────────────────────────────────────────────────────────────────
+    let sourceImageData: string | undefined;
+
+    if (sourceImage) {
+      // Check if it's a URL
+      if (sourceImage.startsWith("http://") || sourceImage.startsWith("https://")) {
+        sourceImageData = sourceImage;
+      }
+      // Check if it's already base64
+      else if (sourceImage.startsWith("data:image")) {
+        sourceImageData = sourceImage;
+      }
+      // Otherwise, treat as local file path
+      else {
+        const fileBuffer = readFileSync(sourceImage);
+
+        // Detect image type from file extension
+        let mimeType = "image/jpeg";
+        if (sourceImage.toLowerCase().endsWith(".png")) {
+          mimeType = "image/png";
+        } else if (sourceImage.toLowerCase().endsWith(".webp")) {
+          mimeType = "image/webp";
+        } else if (sourceImage.toLowerCase().endsWith(".gif")) {
+          mimeType = "image/gif";
+        }
+
+        const base64Image = fileBuffer.toString("base64");
+        sourceImageData = `data:${mimeType};base64,${base64Image}`;
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // Generate Image with Smart Fallback
     // ─────────────────────────────────────────────────────────────────────
-    const spinner = json ? null : ora("Generating image...").start();
+    const spinner = json
+      ? null
+      : ora(sourceImageData ? "Generating image from source..." : "Generating image...").start();
 
     try {
       let imageBuffer: Buffer;
@@ -125,9 +176,15 @@ export class GenerateCommand extends CommandRunner {
           apiKey,
           "openrouter",
           MODEL_CONFIGS.openrouter,
-          spinner
+          spinner,
+          sourceImageData
         );
       } else if (aiProvider === "openai") {
+        if (sourceImageData) {
+          throw new Error(
+            "OpenAI DALL-E does not support image-to-image generation. Use OpenRouter or Google instead."
+          );
+        }
         imageBuffer = await this.generateWithFallback(
           prompt,
           size,
@@ -137,6 +194,11 @@ export class GenerateCommand extends CommandRunner {
           spinner
         );
       } else if (aiProvider === "google") {
+        if (sourceImageData) {
+          throw new Error(
+            "Google Imagen does not support image-to-image generation via this method. Use OpenRouter instead."
+          );
+        }
         imageBuffer = await this.generateWithFallback(
           prompt,
           size,
@@ -182,6 +244,9 @@ export class GenerateCommand extends CommandRunner {
         console.log("─────────────────────────────────────");
         console.log(`Prompt: ${prompt}`);
         console.log(`Size: ${size}`);
+        if (sourceImageData) {
+          console.log(`Source Image: ${sourceImage}`);
+        }
         console.log(`Output: ${outputPath}`);
         console.log(`Provider: ${aiProvider}`);
         console.log("─────────────────────────────────────\n");
@@ -209,7 +274,8 @@ export class GenerateCommand extends CommandRunner {
       info: (msg: string) => void;
       warn: (msg: string) => void;
       isSpinning?: boolean;
-    } | null
+    } | null,
+    sourceImage?: string
   ): Promise<Buffer> {
     const modelsToTry = [config.primary, ...config.fallbacks].filter(
       (model): model is string => model !== null
@@ -226,7 +292,14 @@ export class GenerateCommand extends CommandRunner {
           spinner.text = `Generating image with ${modelName}... (attempt ${i + 1}/${modelsToTry.length})`;
         }
 
-        const imageBuffer = await this.generateWithModel(prompt, size, apiKey, provider, model);
+        const imageBuffer = await this.generateWithModel(
+          prompt,
+          size,
+          apiKey,
+          provider,
+          model,
+          sourceImage
+        );
 
         if (spinner && i > 0) {
           // Only show fallback message if we had to fall back
@@ -277,7 +350,8 @@ export class GenerateCommand extends CommandRunner {
     size: string,
     apiKey: string,
     provider: "openrouter" | "openai" | "google",
-    model: string
+    model: string,
+    sourceImage?: string
   ): Promise<Buffer> {
     // ─────────────────────────────────────────────────────────────────────
     // OPENROUTER (Via Fetch / Chat Completions)
@@ -290,6 +364,27 @@ export class GenerateCommand extends CommandRunner {
         const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
         const divisor = gcd(width, height);
         aspectRatio = `${width / divisor}:${height / divisor}`;
+      }
+
+      // Build content array based on whether we have a source image
+      let content: any;
+      if (sourceImage) {
+        // Image-to-image generation: include source image in content
+        content = [
+          {
+            type: "text",
+            text: prompt,
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: sourceImage,
+            },
+          },
+        ];
+      } else {
+        // Text-to-image generation: just the prompt
+        content = prompt;
       }
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -305,7 +400,7 @@ export class GenerateCommand extends CommandRunner {
           messages: [
             {
               role: "user",
-              content: prompt,
+              content: content,
             },
           ],
           // Specific to Gemini/OpenRouter multimodal
@@ -386,6 +481,14 @@ export class GenerateCommand extends CommandRunner {
     description: "Image size (256x256, 512x512, 1024x1024, 1792x1024, 1024x1792)",
   })
   parseSize(val: string): string {
+    return val;
+  }
+
+  @Option({
+    flags: "--source-image <path>",
+    description: "Path to source image or URL (for image-to-image generation, OpenRouter only)",
+  })
+  parseSourceImage(val: string): string {
     return val;
   }
 

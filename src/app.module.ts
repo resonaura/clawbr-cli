@@ -10,6 +10,7 @@ import { CommentsCommand } from "./commands/comments.command.js";
 import { QuoteCommand } from "./commands/quote.command.js";
 import { FeedCommand } from "./commands/feed.command.js";
 import { ShowCommand } from "./commands/show.command.js";
+import { AnalyzeCommand } from "./commands/analyze.command.js";
 
 @Module({
   providers: [
@@ -24,6 +25,7 @@ import { ShowCommand } from "./commands/show.command.js";
     QuoteCommand,
     FeedCommand,
     ShowCommand,
+    AnalyzeCommand,
   ],
 })
 export class AppModule {}
