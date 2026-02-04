@@ -12,6 +12,9 @@ import { generateImage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { getClawbrConfig } from "../utils/config.js";
 import { fetchPosts, getAgentProfile } from "../utils/api.js";
+import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
+import { analyzeImage } from "../utils/vision.js";
+import { loadCredentials } from "../utils/credentials.js";
 
 const LOGO = `
 ███╗   ███╗ ██████╗ ██╗  ████████╗██████╗ ██████╗
@@ -1244,14 +1247,9 @@ export class TuiCommand extends CommandRunner {
           if (!value || value.trim() === "") {
             return "Image path or URL is required";
           }
-          const cleanPath = value.trim();
-          // Check if it's a URL
-          if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
-            return;
-          }
-          // Check if it's a file
-          if (!existsSync(cleanPath)) {
-            return `File not found: ${cleanPath}`;
+          const validation = validateImageInput(value.trim());
+          if (!validation.valid) {
+            return validation.error;
           }
         },
       });
@@ -1295,13 +1293,14 @@ export class TuiCommand extends CommandRunner {
       const spinner = ora("Analyzing image...").start();
 
       // Load credentials
-      const { homedir } = await import("os");
-      const { join } = await import("path");
-      const { readFileSync } = await import("fs");
+      const credentials = loadCredentials();
 
-      const credentialsPath = join(homedir(), ".config", "clawbr", "credentials.json");
-      const credentialsData = readFileSync(credentialsPath, "utf-8");
-      const credentials = JSON.parse(credentialsData);
+      if (!credentials) {
+        spinner.fail(chalk.red("❌ Credentials not found"));
+        console.log(chalk.yellow("Run 'clawbr onboard' first"));
+        return;
+      }
+
       const { aiProvider, apiKeys } = credentials;
       const apiKey = apiKeys[aiProvider];
 
@@ -1311,134 +1310,18 @@ export class TuiCommand extends CommandRunner {
       }
 
       // Prepare image data
-      let imageData: string;
+      const imageData = encodeImageToDataUri(imagePath);
 
-      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-        imageData = imagePath;
-      } else if (imagePath.startsWith("data:image")) {
-        imageData = imagePath;
-      } else {
-        // Read local file
-        const fileBuffer = readFileSync(imagePath);
-        let mimeType = "image/jpeg";
-        if (imagePath.toLowerCase().endsWith(".png")) {
-          mimeType = "image/png";
-        } else if (imagePath.toLowerCase().endsWith(".webp")) {
-          mimeType = "image/webp";
-        } else if (imagePath.toLowerCase().endsWith(".gif")) {
-          mimeType = "image/gif";
-        }
-        const base64Image = fileBuffer.toString("base64");
-        imageData = `data:${mimeType};base64,${base64Image}`;
-      }
-
-      // Analyze image based on provider
-      let analysis: string;
+      // Analyze image
       const prompt = customPrompt || "Describe this image in detail.";
-
-      if (aiProvider === "openrouter") {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://clawbr.bricks-studio.ai",
-            "X-Title": "clawbr CLI",
-          },
-          body: JSON.stringify({
-            model: "anthropic/claude-3.5-sonnet",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: prompt },
-                  { type: "image_url", image_url: { url: imageData } },
-                ],
-              },
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          spinner.fail(chalk.red("❌ Analysis failed"));
-          console.log(chalk.red("Error: " + errorText));
-          return;
-        }
-
-        const result = (await response.json()) as any;
-        analysis = result.choices?.[0]?.message?.content || "No response";
-      } else if (aiProvider === "google") {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    { text: prompt },
-                    {
-                      inline_data: {
-                        mime_type: imageData.startsWith("data:image")
-                          ? imageData.split(";")[0].split(":")[1]
-                          : "image/jpeg",
-                        data: imageData.startsWith("data:image")
-                          ? imageData.split(",")[1]
-                          : imageData,
-                      },
-                    },
-                  ],
-                },
-              ],
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          spinner.fail(chalk.red("❌ Analysis failed"));
-          console.log(chalk.red("Error: " + errorText));
-          return;
-        }
-
-        const result = (await response.json()) as any;
-        analysis = result.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-      } else if (aiProvider === "openai") {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "gpt-4o",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  { type: "text", text: prompt },
-                  { type: "image_url", image_url: { url: imageData } },
-                ],
-              },
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          spinner.fail(chalk.red("❌ Analysis failed"));
-          console.log(chalk.red("Error: " + errorText));
-          return;
-        }
-
-        const result = (await response.json()) as any;
-        analysis = result.choices?.[0]?.message?.content || "No response";
-      } else {
-        spinner.fail(chalk.red(`❌ Unsupported provider: ${aiProvider}`));
-        return;
-      }
+      const analysis = await analyzeImage(
+        {
+          provider: aiProvider as "openrouter" | "google" | "openai",
+          apiKey,
+        },
+        imageData,
+        prompt
+      );
 
       spinner.succeed(chalk.green("✅ Analysis complete!"));
       console.log();

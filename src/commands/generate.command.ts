@@ -1,13 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Command, CommandRunner, Option } from "nest-commander";
-import { writeFileSync, readFileSync, existsSync } from "fs";
+import { writeFileSync } from "fs";
 import ora from "ora";
 import fetch from "node-fetch";
-import { resolve, join } from "path";
-import { homedir } from "os";
+import { resolve } from "path";
 import { generateImage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { loadCredentials } from "../utils/credentials.js";
+import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
 
 interface GenerateCommandOptions {
   prompt?: string;
@@ -15,18 +16,6 @@ interface GenerateCommandOptions {
   size?: string;
   sourceImage?: string;
   json?: boolean;
-}
-
-interface Credentials {
-  token: string;
-  username: string;
-  url: string;
-  aiProvider: string;
-  apiKeys: {
-    openrouter?: string;
-    google?: string;
-    openai?: string;
-  };
 }
 
 /**
@@ -74,16 +63,9 @@ export class GenerateCommand extends CommandRunner {
 
     // Validate source image if provided
     if (sourceImage) {
-      // Check if it's a URL
-      if (
-        !sourceImage.startsWith("http://") &&
-        !sourceImage.startsWith("https://") &&
-        !sourceImage.startsWith("data:image")
-      ) {
-        // It's a file path
-        if (!existsSync(sourceImage)) {
-          throw new Error(`Source image file not found: ${sourceImage}`);
-        }
+      const validation = validateImageInput(sourceImage);
+      if (!validation.valid) {
+        throw new Error(validation.error);
       }
     }
 
@@ -96,25 +78,10 @@ export class GenerateCommand extends CommandRunner {
     // ─────────────────────────────────────────────────────────────────────
     // Load Credentials
     // ─────────────────────────────────────────────────────────────────────
-    const credentialsPath = join(homedir(), ".config", "clawbr", "credentials.json");
+    const credentials = loadCredentials();
 
-    if (!existsSync(credentialsPath)) {
-      throw new Error(
-        "Credentials not found. Run 'clawbr onboard' first to set up your account.\n" +
-          `Expected credentials at: ${credentialsPath}`
-      );
-    }
-
-    let credentials: Credentials;
-
-    try {
-      const credentialsData = readFileSync(credentialsPath, "utf-8");
-      credentials = JSON.parse(credentialsData);
-    } catch {
-      throw new Error(
-        "Failed to read credentials file. Run 'clawbr onboard' to reconfigure.\n" +
-          `Path: ${credentialsPath}`
-      );
+    if (!credentials) {
+      throw new Error("Credentials not found. Run 'clawbr onboard' first to set up your account.");
     }
 
     const { aiProvider, apiKeys } = credentials;
@@ -129,35 +96,7 @@ export class GenerateCommand extends CommandRunner {
     // ─────────────────────────────────────────────────────────────────────
     // Prepare source image if provided
     // ─────────────────────────────────────────────────────────────────────
-    let sourceImageData: string | undefined;
-
-    if (sourceImage) {
-      // Check if it's a URL
-      if (sourceImage.startsWith("http://") || sourceImage.startsWith("https://")) {
-        sourceImageData = sourceImage;
-      }
-      // Check if it's already base64
-      else if (sourceImage.startsWith("data:image")) {
-        sourceImageData = sourceImage;
-      }
-      // Otherwise, treat as local file path
-      else {
-        const fileBuffer = readFileSync(sourceImage);
-
-        // Detect image type from file extension
-        let mimeType = "image/jpeg";
-        if (sourceImage.toLowerCase().endsWith(".png")) {
-          mimeType = "image/png";
-        } else if (sourceImage.toLowerCase().endsWith(".webp")) {
-          mimeType = "image/webp";
-        } else if (sourceImage.toLowerCase().endsWith(".gif")) {
-          mimeType = "image/gif";
-        }
-
-        const base64Image = fileBuffer.toString("base64");
-        sourceImageData = `data:${mimeType};base64,${base64Image}`;
-      }
-    }
+    const sourceImageData = sourceImage ? encodeImageToDataUri(sourceImage) : undefined;
 
     // ─────────────────────────────────────────────────────────────────────
     // Generate Image with Smart Fallback

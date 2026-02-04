@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Command, CommandRunner, Option } from "nest-commander";
-import { readFileSync, existsSync } from "fs";
 import ora from "ora";
-import fetch from "node-fetch";
 import { loadCredentials } from "../utils/credentials.js";
+import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
+import { analyzeImage } from "../utils/vision.js";
 
 interface AnalyzeCommandOptions {
   image?: string;
@@ -30,6 +29,11 @@ export class AnalyzeCommand extends CommandRunner {
       );
     }
 
+    const validation = validateImageInput(image);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Load Credentials
     // ─────────────────────────────────────────────────────────────────────
@@ -49,40 +53,9 @@ export class AnalyzeCommand extends CommandRunner {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Prepare Image - Convert to base64 or use URL
+    // Prepare Image
     // ─────────────────────────────────────────────────────────────────────
-    let imageData: string;
-
-    // Check if it's a URL
-    if (image.startsWith("http://") || image.startsWith("https://")) {
-      imageData = image;
-    }
-    // Check if it's already base64
-    else if (image.startsWith("data:image")) {
-      imageData = image;
-    }
-    // Otherwise, treat as local file path
-    else {
-      if (!existsSync(image)) {
-        throw new Error(`File not found: ${image}`);
-      }
-
-      // Read file and convert to base64
-      const fileBuffer = readFileSync(image);
-
-      // Detect image type from file extension
-      let mimeType = "image/jpeg";
-      if (image.toLowerCase().endsWith(".png")) {
-        mimeType = "image/png";
-      } else if (image.toLowerCase().endsWith(".webp")) {
-        mimeType = "image/webp";
-      } else if (image.toLowerCase().endsWith(".gif")) {
-        mimeType = "image/gif";
-      }
-
-      const base64Image = fileBuffer.toString("base64");
-      imageData = `data:${mimeType};base64,${base64Image}`;
-    }
+    const imageData = encodeImageToDataUri(image);
 
     // ─────────────────────────────────────────────────────────────────────
     // Analyze Image
@@ -90,11 +63,13 @@ export class AnalyzeCommand extends CommandRunner {
     const spinner = json ? null : ora("Analyzing image...").start();
 
     try {
-      const analysis = await this.analyzeImage(
+      const analysis = await analyzeImage(
+        {
+          provider: aiProvider as "openrouter" | "google" | "openai",
+          apiKey,
+        },
         imageData,
-        prompt || "Describe this image in detail.",
-        aiProvider,
-        apiKey
+        prompt || "Describe this image in detail."
       );
 
       if (spinner) {
@@ -130,147 +105,6 @@ export class AnalyzeCommand extends CommandRunner {
       }
       throw error;
     }
-  }
-
-  /**
-   * Analyze image using the configured AI provider
-   */
-  private async analyzeImage(
-    imageData: string,
-    prompt: string,
-    provider: string,
-    apiKey: string
-  ): Promise<string> {
-    // ─────────────────────────────────────────────────────────────────────
-    // OpenRouter
-    // ─────────────────────────────────────────────────────────────────────
-    if (provider === "openrouter") {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://clawbr.bricks-studio.ai",
-          "X-Title": "clawbr CLI",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-3.5-sonnet",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: prompt,
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageData,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenRouter API error: ${errorText}`);
-      }
-
-      const result = (await response.json()) as any;
-      return result.choices?.[0]?.message?.content || "No response";
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Google Gemini
-    // ─────────────────────────────────────────────────────────────────────
-    if (provider === "google") {
-      // Use Google's Generative AI API
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt,
-                  },
-                  {
-                    inline_data: {
-                      mime_type: imageData.startsWith("data:image")
-                        ? imageData.split(";")[0].split(":")[1]
-                        : "image/jpeg",
-                      data: imageData.startsWith("data:image")
-                        ? imageData.split(",")[1]
-                        : imageData,
-                    },
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Google API error: ${errorText}`);
-      }
-
-      const result = (await response.json()) as any;
-      return result.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // OpenAI
-    // ─────────────────────────────────────────────────────────────────────
-    if (provider === "openai") {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: prompt,
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageData,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI API error: ${errorText}`);
-      }
-
-      const result = (await response.json()) as any;
-      return result.choices?.[0]?.message?.content || "No response";
-    }
-
-    throw new Error(`Unsupported AI provider: ${provider}`);
   }
 
   @Option({
