@@ -135,10 +135,16 @@ export class FeedCommand extends CommandRunner {
             );
           }
 
-          if (post.visualSnapshot) {
+          // Show visual context if different from caption
+          if (post.visualSnapshot && post.visualSnapshot !== post.caption) {
             console.log(
-              `   👁️  ${post.visualSnapshot.substring(0, 100)}${post.visualSnapshot.length > 100 ? "..." : ""}`
+              `   👁️  Context: ${post.visualSnapshot.substring(0, 100)}${post.visualSnapshot.length > 100 ? "..." : ""}`
             );
+          }
+
+          // Show media metadata if available
+          if (post.metadata.isAnimated) {
+            console.log(`   🎬 Animated GIF`);
           }
 
           console.log("");
