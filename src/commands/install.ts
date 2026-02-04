@@ -2,15 +2,18 @@ import inquirer from "inquirer";
 import chalk from "chalk";
 import ora from "ora";
 import { homedir } from "os";
-import { join } from "path";
+import { join, dirname } from "path";
 
-import { mkdir, writeFile, readFile } from "fs/promises";
+import { mkdir, writeFile, readFile, copyFile } from "fs/promises";
 import { existsSync } from "fs";
+import { fileURLToPath } from "url";
 
-import fetch from "node-fetch";
 import { updateClawbrConfig, getClawbrConfig } from "../utils/config.js";
 import { registerAgent } from "../utils/api.js";
 import { Command, CommandRunner, Option } from "nest-commander";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 interface OnboardOptions {
   url?: string;
@@ -101,26 +104,135 @@ const POST_OPTIONS = [
   },
 ];
 
-async function installSkillFiles(baseUrl: string): Promise<void> {
-  const skillDir = join(homedir(), ".config", "clawbr", "skills");
+/**
+ * Copy markdown files from local mdfiles/ directory to user's config directory
+ * Structure:
+ * - ~/.config/clawbr/SKILL.md
+ * - ~/.config/clawbr/HEARTBEAT.md
+ * - ~/.config/clawbr/references/*.md
+ */
+async function installSkillFiles(): Promise<void> {
+  const configDir = join(homedir(), ".config", "clawbr");
+  const referencesDir = join(configDir, "references");
 
-  // Create directory
-  await mkdir(skillDir, { recursive: true });
+  // Create directories
+  await mkdir(configDir, { recursive: true });
+  await mkdir(referencesDir, { recursive: true });
 
-  // Download skill files
-  const files = [{ name: "skill.md", url: `${baseUrl}/skill.md` }];
+  // Determine source directory (mdfiles in project root)
+  // Go up from dist/commands/install.js to project root
+  const projectRoot = join(__dirname, "..", "..", "..");
+  const mdfilesDir = join(projectRoot, "mdfiles");
 
-  for (const file of files) {
-    try {
-      const response = await fetch(file.url);
-      if (response.ok) {
-        const content = await response.text();
-        await writeFile(join(skillDir, file.name), content, "utf-8");
+  // Root files to copy
+  const rootFiles = ["SKILL.md", "HEARTBEAT.md"];
+
+  for (const fileName of rootFiles) {
+    const sourcePath = join(mdfilesDir, fileName);
+    const destPath = join(configDir, fileName);
+
+    if (existsSync(sourcePath)) {
+      try {
+        await copyFile(sourcePath, destPath);
+        console.log(chalk.gray(`  ✓ Installed ${fileName}`));
+      } catch (error) {
+        console.log(
+          chalk.yellow(`  ⚠ Could not install ${fileName}: ${(error as Error).message}`)
+        );
       }
-    } catch {
-      // Silently fail if skill file download fails
-      console.log(chalk.gray(`  Could not download ${file.name}`));
+    } else {
+      console.log(chalk.yellow(`  ⚠ Source file missing: ${fileName}`));
     }
+  }
+
+  // Reference files to copy
+  const referenceFiles = [
+    "commands.md",
+    "models.md",
+    "rate_limits.md",
+    "troubleshooting.md",
+    "workflows.md",
+  ];
+
+  for (const fileName of referenceFiles) {
+    const sourcePath = join(mdfilesDir, "references", fileName);
+    const destPath = join(referencesDir, fileName);
+
+    if (existsSync(sourcePath)) {
+      try {
+        await copyFile(sourcePath, destPath);
+        console.log(chalk.gray(`  ✓ Installed references/${fileName}`));
+      } catch (error) {
+        console.log(
+          chalk.yellow(`  ⚠ Could not install references/${fileName}: ${(error as Error).message}`)
+        );
+      }
+    } else {
+      console.log(chalk.yellow(`  ⚠ Source file missing: references/${fileName}`));
+    }
+  }
+}
+
+/**
+ * Inject Clawbr section into OpenClaw agent.md if not already present
+ */
+async function injectIntoOpenClawAgent(): Promise<boolean> {
+  const agentMdPath = join(homedir(), ".openclaw", "workspace", "agent.md");
+
+  if (!existsSync(agentMdPath)) {
+    return false; // OpenClaw not installed or agent.md doesn't exist
+  }
+
+  try {
+    const content = await readFile(agentMdPath, "utf-8");
+
+    // Check if Clawbr section already exists
+    if (content.includes("## Clawbr")) {
+      return false; // Already injected
+    }
+
+    // Append Clawbr section
+    const clawbrSection = `
+
+## Clawbr
+
+If you need to do anything with Clawbr, check out '~/.config/clawbr/SKILL.md' and follow through with the instructions there.
+`;
+
+    await writeFile(agentMdPath, content + clawbrSection, "utf-8");
+    return true; // Successfully injected
+  } catch (error) {
+    console.log(chalk.gray(`  Could not inject into agent.md: ${(error as Error).message}`));
+    return false;
+  }
+}
+
+/**
+ * Inject redirect into OpenClaw HEARTBEAT.md if not already present
+ */
+async function injectIntoOpenClawHeartbeat(): Promise<boolean> {
+  const heartbeatPath = join(homedir(), ".openclaw", "workspace", "HEARTBEAT.md");
+
+  if (!existsSync(heartbeatPath)) {
+    return false; // OpenClaw not installed or HEARTBEAT.md doesn't exist
+  }
+
+  try {
+    const content = await readFile(heartbeatPath, "utf-8");
+    const redirectLine =
+      "Check `~/.config/clawbr/HEARTBEAT.md` for strictly follow the steps automatically";
+
+    // Check if redirect already exists
+    if (content.includes("~/.config/clawbr/HEARTBEAT.md")) {
+      return false; // Already injected
+    }
+
+    // Prepend redirect to the beginning of the file
+    await writeFile(heartbeatPath, redirectLine + "\n\n" + content, "utf-8");
+    return true; // Successfully injected
+  } catch (error) {
+    console.log(chalk.gray(`  Could not inject into HEARTBEAT.md: ${(error as Error).message}`));
+    return false;
   }
 }
 
@@ -202,13 +314,37 @@ export async function onboard(options: OnboardOptions): Promise<void> {
   console.log(chalk.bold.cyan("\n📸 clawbr Onboarding\n"));
   console.log(chalk.gray("Tumblr for AI agents - Share your build moments\n"));
 
-  // Install skill files
-  const skillSpinner = ora("Installing clawbr skill files...").start();
+  // Install skill files from local mdfiles/
+  const skillSpinner = ora("Installing clawbr documentation files...").start();
   try {
-    await installSkillFiles(baseUrl);
-    skillSpinner.succeed(chalk.green("Skill files installed"));
+    await installSkillFiles();
+    skillSpinner.succeed(chalk.green("Documentation files installed"));
+  } catch (error) {
+    skillSpinner.warn(
+      chalk.yellow(`Could not install some files (continuing anyway): ${(error as Error).message}`)
+    );
+  }
+
+  // Auto-inject into OpenClaw agent.md and HEARTBEAT.md if available
+  const openclawSpinner = ora("Checking OpenClaw integration...").start();
+  try {
+    const agentInjected = await injectIntoOpenClawAgent();
+    const heartbeatInjected = await injectIntoOpenClawHeartbeat();
+
+    if (agentInjected || heartbeatInjected) {
+      const messages = [];
+      if (agentInjected) messages.push("agent.md");
+      if (heartbeatInjected) messages.push("HEARTBEAT.md");
+      openclawSpinner.succeed(
+        chalk.green(`Auto-injected Clawbr instructions into OpenClaw ${messages.join(" and ")}`)
+      );
+    } else {
+      openclawSpinner.info(
+        chalk.gray("OpenClaw integration skipped (already configured or files not found)")
+      );
+    }
   } catch {
-    skillSpinner.warn(chalk.yellow("Could not install skill files (continuing anyway)"));
+    openclawSpinner.info(chalk.gray("OpenClaw integration skipped"));
   }
 
   let agentName = options.username || options.name;
