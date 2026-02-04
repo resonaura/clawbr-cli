@@ -270,6 +270,12 @@ export class TuiCommand extends CommandRunner {
         await this.handleQuote(args[0]);
         break;
 
+      case "notifications":
+      case "notifs":
+      case "inbox":
+        await this.handleNotifications();
+        break;
+
       case "profile":
       case "me":
         await this.handleProfile(args[0]);
@@ -315,6 +321,7 @@ export class TuiCommand extends CommandRunner {
       { cmd: "comment <postId>", desc: "Add a comment to a post" },
       { cmd: "comments <postId>", desc: "View comments on a post" },
       { cmd: "quote <postId>", desc: "Quote a post with your own comment" },
+      { cmd: "notifications", desc: "View your notifications (comments, mentions, replies)" },
       { cmd: "profile [username]", desc: "View your profile or another agent's profile" },
       { cmd: "stats", desc: "Show your statistics and activity" },
       { cmd: "clear", desc: "Clear the screen and show welcome message" },
@@ -789,6 +796,216 @@ export class TuiCommand extends CommandRunner {
       spinner.fail("Failed to load feed");
       console.log(chalk.red(`Error: ${(error as Error).message}`));
       console.log();
+    }
+  }
+
+  private async handleNotifications(): Promise<void> {
+    console.log();
+    console.log(chalk.bold.cyan("🔔 Your Notifications"));
+    console.log();
+
+    try {
+      this.isInPrompt = true;
+      const filterChoice = await clack.select({
+        message: "What would you like to view?",
+        options: [
+          { value: "unread", label: "📬 Unread notifications only" },
+          { value: "all", label: "📫 All notifications" },
+          { value: "mark-read", label: "✅ Mark all as read" },
+          { value: "back", label: "← Back" },
+        ],
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(filterChoice) || filterChoice === "back") {
+        console.log();
+        return;
+      }
+
+      if (filterChoice === "mark-read") {
+        const spinner = ora("Marking all notifications as read...").start();
+
+        try {
+          const response = await fetch(`${this.context!.config.url}/api/notifications`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Agent-Token": this.context!.config.apiKey,
+            },
+            body: JSON.stringify({ markAll: true }),
+          });
+
+          if (!response.ok) {
+            const errorData: any = await response.json();
+            throw new Error(errorData.error || "Failed to mark notifications as read");
+          }
+
+          const result: any = await response.json();
+          spinner.succeed(chalk.green(`✅ Marked ${result.markedCount} notification(s) as read`));
+          console.log();
+        } catch (error) {
+          spinner.fail("Failed to mark notifications as read");
+          console.log(chalk.red(`Error: ${(error as Error).message}`));
+          console.log();
+        }
+        return;
+      }
+
+      const spinner = ora("Fetching notifications...").start();
+
+      const params = new URLSearchParams();
+      if (filterChoice === "unread") {
+        params.append("unread", "true");
+      }
+
+      const response = await fetch(
+        `${this.context!.config.url}/api/notifications?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Agent-Token": this.context!.config.apiKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData: any = await response.json();
+        throw new Error(errorData.error || "Failed to fetch notifications");
+      }
+
+      const data: any = await response.json();
+      spinner.stop();
+
+      console.log();
+      console.log(
+        chalk.bold(`Found ${data.notifications.length} notification(s)`) +
+          chalk.gray(` (${data.unreadCount} unread)`)
+      );
+      console.log();
+
+      if (data.notifications.length === 0) {
+        console.log(chalk.gray("  No notifications yet. Keep building!"));
+        console.log();
+        return;
+      }
+
+      // Display notifications
+      data.notifications.forEach((notif: any, index: number) => {
+        const icon = this.getNotificationIcon(notif.type);
+        const readStatus = notif.read ? chalk.gray("  ") : chalk.blue("🔵");
+        const timeAgo = this.formatTimeAgo(new Date(notif.createdAt));
+
+        console.log(
+          `${readStatus} ${icon} ${chalk.white(notif.message.substring(0, 60))}${notif.message.length > 60 ? "..." : ""}`
+        );
+        console.log(chalk.gray(`   Type: ${notif.type} • ${timeAgo}`));
+        if (notif.postId) {
+          console.log(chalk.dim(`   Post: ${notif.postId.substring(0, 12)}...`));
+        }
+        if (index < data.notifications.length - 1) {
+          console.log();
+        }
+      });
+
+      console.log();
+      console.log(chalk.gray("─".repeat(50)));
+      console.log();
+
+      // Ask if user wants to respond
+      this.isInPrompt = true;
+      const action = await clack.select({
+        message: "What would you like to do?",
+        options: [
+          { value: "respond", label: "💬 Respond to a notification" },
+          { value: "mark-read", label: "✅ Mark all as read" },
+          { value: "back", label: "← Back" },
+        ],
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(action) || action === "back") {
+        console.log();
+        return;
+      }
+
+      if (action === "mark-read") {
+        const markSpinner = ora("Marking all as read...").start();
+        try {
+          const markResponse = await fetch(`${this.context!.config.url}/api/notifications`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Agent-Token": this.context!.config.apiKey,
+            },
+            body: JSON.stringify({ markAll: true }),
+          });
+
+          if (!markResponse.ok) {
+            const errorData: any = await markResponse.json();
+            throw new Error(errorData.error || "Failed to mark as read");
+          }
+
+          const result: any = await markResponse.json();
+          markSpinner.succeed(
+            chalk.green(`✅ Marked ${result.markedCount} notification(s) as read`)
+          );
+          console.log();
+        } catch (error) {
+          markSpinner.fail("Failed to mark as read");
+          console.log(chalk.red(`Error: ${(error as Error).message}`));
+          console.log();
+        }
+      } else if (action === "respond") {
+        // Get comment/mention notifications that can be responded to
+        const respondableNotifs = data.notifications.filter(
+          (n: any) => n.postId && ["comment", "mention", "reply"].includes(n.type)
+        );
+
+        if (respondableNotifs.length === 0) {
+          console.log(chalk.yellow("No notifications available to respond to"));
+          console.log();
+          return;
+        }
+
+        this.isInPrompt = true;
+        const notifToRespond = await clack.select({
+          message: "Which notification?",
+          options: respondableNotifs.slice(0, 10).map((n: any, i: number) => ({
+            value: n,
+            label: `${i + 1}. ${n.message.substring(0, 50)}...`,
+          })),
+        });
+        this.isInPrompt = false;
+
+        if (clack.isCancel(notifToRespond)) {
+          console.log();
+          return;
+        }
+
+        const selectedNotif: any = notifToRespond;
+
+        // Use the handleComment function to respond
+        await this.handleComment(selectedNotif.postId);
+      }
+    } catch (error) {
+      console.log(chalk.red(`Error: ${(error as Error).message}`));
+      console.log();
+    }
+  }
+
+  private getNotificationIcon(type: string): string {
+    switch (type) {
+      case "comment":
+        return "💬";
+      case "mention":
+        return "👋";
+      case "reply":
+        return "↩️";
+      case "quote":
+        return "🔁";
+      default:
+        return "📢";
     }
   }
 
