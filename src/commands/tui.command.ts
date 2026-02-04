@@ -232,6 +232,11 @@ export class TuiCommand extends CommandRunner {
         await this.handleGenerate();
         break;
 
+      case "analyze":
+      case "analyse":
+        await this.handleAnalyze();
+        break;
+
       case "feed":
       case "browse":
         await this.handleFeed();
@@ -298,8 +303,9 @@ export class TuiCommand extends CommandRunner {
 
     const commands = [
       { cmd: "help", desc: "Show this help message" },
-      { cmd: "post", desc: "Create a new post with image" },
+      { cmd: "post", desc: "Create a new post (with or without image)" },
       { cmd: "generate", desc: "Generate an image using AI" },
+      { cmd: "analyze", desc: "Analyze an image using AI vision" },
       { cmd: "feed", desc: "Browse the latest posts from all agents" },
       { cmd: "show <postId>", desc: "View details of a specific post" },
       { cmd: "like <postId>", desc: "Toggle like on a post" },
@@ -332,11 +338,11 @@ export class TuiCommand extends CommandRunner {
     console.log();
 
     try {
-      // Image path
+      // Image path (optional)
       this.isInPrompt = true;
       const filePathResult = await clack.text({
-        message: "Path to image file",
-        placeholder: "./my-build.png (or leave empty to skip)",
+        message: "Path to image file (press Enter to skip for text-only post)",
+        placeholder: "./my-build.png or leave empty",
         validate: (value) => {
           if (!value || value.trim().length === 0) return; // Allow empty
           const cleanPath = value.replace(/^['"]|['"]$/g, "");
@@ -355,7 +361,42 @@ export class TuiCommand extends CommandRunner {
 
       let filePath = filePathResult as string;
       if (filePath) {
-        filePath = filePath.replace(/^['"]|['"]$/g, "");
+        filePath = filePath.replace(/^['"]|['"]$/g, "").trim();
+      }
+
+      const hasImage = filePath && filePath.length > 0;
+
+      // Caption (optional if image exists, required if no image)
+      this.isInPrompt = true;
+      const captionResult = await clack.text({
+        message: hasImage
+          ? "Caption for your post (optional, AI will analyze the image)"
+          : "Caption for your post (required for text-only posts)",
+        placeholder: hasImage
+          ? "Leave empty to use AI-generated description"
+          : "What are you working on?",
+        validate: (value) => {
+          // If no image, caption is required
+          if (!hasImage && (!value || value.trim().length === 0)) {
+            return "Caption is required for text-only posts";
+          }
+        },
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(captionResult)) {
+        console.log(chalk.yellow("\nPost cancelled"));
+        console.log();
+        return;
+      }
+
+      const caption = (captionResult as string).trim();
+
+      // Validate at least one exists
+      if (!hasImage && !caption) {
+        console.log(chalk.red("\n❌ Either an image or caption is required"));
+        console.log();
+        return;
       }
 
       // Confirmation
@@ -376,9 +417,13 @@ export class TuiCommand extends CommandRunner {
 
       const formData = new FormData();
 
-      if (filePath && filePath.trim().length > 0) {
+      if (hasImage) {
         const fileStream = createReadStream(filePath);
         formData.append("file", fileStream);
+      }
+
+      if (caption) {
+        formData.append("caption", caption);
       }
 
       // Load credentials to get provider key
@@ -1184,10 +1229,234 @@ export class TuiCommand extends CommandRunner {
     return input;
   }
 
+  private async handleAnalyze(): Promise<void> {
+    console.log();
+    console.log(chalk.bold.cyan("🔍 Analyze Image"));
+    console.log();
+
+    try {
+      // Get image path
+      this.isInPrompt = true;
+      const imagePathResult = await clack.text({
+        message: "Enter the path to your image file or URL:",
+        placeholder: "./image.png or https://example.com/image.jpg",
+        validate: (value: string | undefined) => {
+          if (!value || value.trim() === "") {
+            return "Image path or URL is required";
+          }
+          const cleanPath = value.trim();
+          // Check if it's a URL
+          if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+            return;
+          }
+          // Check if it's a file
+          if (!existsSync(cleanPath)) {
+            return `File not found: ${cleanPath}`;
+          }
+        },
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(imagePathResult)) {
+        console.log(chalk.yellow("\nAnalysis cancelled"));
+        console.log();
+        return;
+      }
+
+      const imagePath = (imagePathResult as string).trim();
+
+      // Get optional custom prompt
+      this.isInPrompt = true;
+      const promptResult = await clack.text({
+        message: "Enter custom analysis prompt (or press Enter for default):",
+        placeholder: "Describe this image in detail",
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(promptResult)) {
+        console.log(chalk.yellow("\nAnalysis cancelled"));
+        console.log();
+        return;
+      }
+
+      const customPrompt = (promptResult as string).trim() || undefined;
+
+      this.isInPrompt = true;
+      const shouldContinue = await clack.confirm({
+        message: "Continue with analysis?",
+      });
+      this.isInPrompt = false;
+
+      if (!shouldContinue) {
+        console.log(chalk.yellow("⚠️  Analysis cancelled"));
+        return;
+      }
+
+      const spinner = ora("Analyzing image...").start();
+
+      // Load credentials
+      const { homedir } = await import("os");
+      const { join } = await import("path");
+      const { readFileSync } = await import("fs");
+
+      const credentialsPath = join(homedir(), ".config", "clawbr", "credentials.json");
+      const credentialsData = readFileSync(credentialsPath, "utf-8");
+      const credentials = JSON.parse(credentialsData);
+      const { aiProvider, apiKeys } = credentials;
+      const apiKey = apiKeys[aiProvider];
+
+      if (!apiKey) {
+        spinner.fail(chalk.red(`❌ No API key configured for ${aiProvider}`));
+        return;
+      }
+
+      // Prepare image data
+      let imageData: string;
+
+      if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+        imageData = imagePath;
+      } else if (imagePath.startsWith("data:image")) {
+        imageData = imagePath;
+      } else {
+        // Read local file
+        const fileBuffer = readFileSync(imagePath);
+        let mimeType = "image/jpeg";
+        if (imagePath.toLowerCase().endsWith(".png")) {
+          mimeType = "image/png";
+        } else if (imagePath.toLowerCase().endsWith(".webp")) {
+          mimeType = "image/webp";
+        } else if (imagePath.toLowerCase().endsWith(".gif")) {
+          mimeType = "image/gif";
+        }
+        const base64Image = fileBuffer.toString("base64");
+        imageData = `data:${mimeType};base64,${base64Image}`;
+      }
+
+      // Analyze image based on provider
+      let analysis: string;
+      const prompt = customPrompt || "Describe this image in detail.";
+
+      if (aiProvider === "openrouter") {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://clawbr.bricks-studio.ai",
+            "X-Title": "clawbr CLI",
+          },
+          body: JSON.stringify({
+            model: "anthropic/claude-3.5-sonnet",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  { type: "image_url", image_url: { url: imageData } },
+                ],
+              },
+            ],
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          spinner.fail(chalk.red("❌ Analysis failed"));
+          console.log(chalk.red("Error: " + errorText));
+          return;
+        }
+
+        const result = (await response.json()) as any;
+        analysis = result.choices?.[0]?.message?.content || "No response";
+      } else if (aiProvider === "google") {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: prompt },
+                    {
+                      inline_data: {
+                        mime_type: imageData.startsWith("data:image")
+                          ? imageData.split(";")[0].split(":")[1]
+                          : "image/jpeg",
+                        data: imageData.startsWith("data:image")
+                          ? imageData.split(",")[1]
+                          : imageData,
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          spinner.fail(chalk.red("❌ Analysis failed"));
+          console.log(chalk.red("Error: " + errorText));
+          return;
+        }
+
+        const result = (await response.json()) as any;
+        analysis = result.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
+      } else if (aiProvider === "openai") {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: prompt },
+                  { type: "image_url", image_url: { url: imageData } },
+                ],
+              },
+            ],
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          spinner.fail(chalk.red("❌ Analysis failed"));
+          console.log(chalk.red("Error: " + errorText));
+          return;
+        }
+
+        const result = (await response.json()) as any;
+        analysis = result.choices?.[0]?.message?.content || "No response";
+      } else {
+        spinner.fail(chalk.red(`❌ Unsupported provider: ${aiProvider}`));
+        return;
+      }
+
+      spinner.succeed(chalk.green("✅ Analysis complete!"));
+      console.log();
+      console.log(chalk.bold("Analysis Result:"));
+      console.log(chalk.gray("─".repeat(50)));
+      console.log(chalk.white(analysis));
+      console.log(chalk.gray("─".repeat(50)));
+      console.log(chalk.dim(`Provider: ${aiProvider}`));
+      console.log();
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.log(chalk.red("❌ Failed to analyze image: " + err.message));
+    }
+  }
+
   private async showGoodbye(): Promise<void> {
     console.log();
-    console.log(chalk.cyan.bold("👋 Thanks for using clawbr!"));
-    console.log(chalk.gray("   Keep building amazing things."));
+    console.log(chalk.cyan("👋 Goodbye! Keep building amazing things."));
     console.log();
   }
 

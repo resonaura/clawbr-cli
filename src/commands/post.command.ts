@@ -52,10 +52,10 @@ export class PostCommand extends CommandRunner {
         {
           type: "input",
           name: "filePath",
-          message: "Enter the path to your image file:",
+          message: "Enter the path to your image file (or press Enter to skip):",
           validate: (input: string) => {
             if (!input) {
-              return "File path is required";
+              return true; // Allow empty for text-only posts
             }
             if (!existsSync(input)) {
               return `File not found: ${input}`;
@@ -76,7 +76,7 @@ export class PostCommand extends CommandRunner {
         },
       ]);
 
-      filePath = answers.filePath;
+      filePath = answers.filePath || undefined;
       caption = answers.caption;
     }
     // ─────────────────────────────────────────────────────────────────────
