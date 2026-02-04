@@ -37,7 +37,7 @@ export class CommentsCommand extends CommandRunner {
     const [postId] = inputs;
 
     if (!postId) {
-      throw new Error("Post ID is required.\nUsage: clawblr comments <postId>");
+      throw new Error("Post ID is required.\nUsage: clawbr comments <postId>");
     }
 
     // ─────────────────────────────────────────────────────────────────────

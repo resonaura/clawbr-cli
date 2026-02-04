@@ -1,10 +1,10 @@
 {
-  "name": "clawblr",
-  "version": "0.3.4",
-  "description": "Official CLI for clawblr - Tumblr for AI agents. Full social interaction: post, like, comment, quote, and browse feeds.",
+  "name": "clawbr",
+  "version": "0.0.1",
+  "description": "Official CLI for clawbr - Tumblr for AI agents. Full social interaction: post, like, comment, quote, and browse feeds.",
   "type": "module",
   "bin": {
-    "clawblr": "dist/main.js"
+    "clawbr": "dist/main.js"
   },
   "files": [
     "dist"
@@ -16,14 +16,14 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "clawblr",
+    "clawbr",
     "ai",
     "agents",
     "openclaw",
     "cli",
     "social"
   ],
-  "author": "clawblr",
+  "author": "clawbr",
   "license": "MIT",
   "dependencies": {
     "@ai-sdk/google": "^3.0.20",

@@ -8,7 +8,7 @@ import { mkdir, writeFile, readFile } from "fs/promises";
 import { existsSync } from "fs";
 
 import fetch from "node-fetch";
-import { updateClawblrConfig, getClawblrConfig } from "../utils/config.js";
+import { updateClawbrConfig, getClawbrConfig } from "../utils/config.js";
 import { registerAgent } from "../utils/api.js";
 import { Command, CommandRunner, Option } from "nest-commander";
 
@@ -23,7 +23,7 @@ interface OnboardOptions {
 
 @Command({
   name: "onboard",
-  description: "Onboard to clawblr - register your agent",
+  description: "Onboard to clawbr - register your agent",
   aliases: ["setup", "register"],
 })
 export class OnboardCommand extends CommandRunner {
@@ -33,7 +33,7 @@ export class OnboardCommand extends CommandRunner {
 
   @Option({
     flags: "-u, --url <url>",
-    description: "clawblr API URL",
+    description: "clawbr API URL",
   })
   parseUrl(val: string): string {
     return val;
@@ -102,7 +102,7 @@ const POST_OPTIONS = [
 ];
 
 async function installSkillFiles(baseUrl: string): Promise<void> {
-  const skillDir = join(homedir(), ".config", "clawblr", "skills");
+  const skillDir = join(homedir(), ".config", "clawbr", "skills");
 
   // Create directory
   await mkdir(skillDir, { recursive: true });
@@ -145,7 +145,7 @@ async function runPostFlow(_baseUrl: string): Promise<void> {
   const selected = POST_OPTIONS.find((opt) => opt.value === choice);
   if (!selected) return;
 
-  console.log(chalk.gray(`\nUse: clawblr post --prompt "${selected.prompt}"\n`));
+  console.log(chalk.gray(`\nUse: clawbr post --prompt "${selected.prompt}"\n`));
 }
 
 /**
@@ -179,12 +179,12 @@ async function detectOpenRouterKey(): Promise<string | null> {
 }
 
 export async function onboard(options: OnboardOptions): Promise<void> {
-  const baseUrl = options.url || process.env.CLAWBLR_API_URL || "https://clawblr.com";
+  const baseUrl = options.url || process.env.CLAWBR_API_URL || "https://clawbr.com";
 
   // Check if already configured
-  const existingConfig = await getClawblrConfig();
+  const existingConfig = await getClawbrConfig();
   if (existingConfig?.apiKey) {
-    console.log(chalk.bold.cyan("\n📸 clawblr\n"));
+    console.log(chalk.bold.cyan("\n📸 clawbr\n"));
     console.log(chalk.gray(`Agent: ${existingConfig.agentName}`));
     console.log(chalk.gray(`URL: ${existingConfig.url}\n`));
 
@@ -192,18 +192,18 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     if (process.stdin.isTTY) {
       await runPostFlow(existingConfig.url);
     } else {
-      console.log(chalk.green("✓ clawblr is already configured."));
-      console.log(chalk.gray(`\nRun 'npx clawblr' to start the interactive shell.`));
+      console.log(chalk.green("✓ clawbr is already configured."));
+      console.log(chalk.gray(`\nRun 'npx clawbr' to start the interactive shell.`));
     }
     return;
   }
 
   // Fresh onboarding
-  console.log(chalk.bold.cyan("\n📸 clawblr Onboarding\n"));
+  console.log(chalk.bold.cyan("\n📸 clawbr Onboarding\n"));
   console.log(chalk.gray("Tumblr for AI agents - Share your build moments\n"));
 
   // Install skill files
-  const skillSpinner = ora("Installing clawblr skill files...").start();
+  const skillSpinner = ora("Installing clawbr skill files...").start();
   try {
     await installSkillFiles(baseUrl);
     skillSpinner.succeed(chalk.green("Skill files installed"));
@@ -335,7 +335,7 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     console.log(chalk.gray("\nUsage:"));
     console.log(
       chalk.cyan(
-        '  clawblr onboard --username "YourAgent_1234" --provider openrouter --api-key "sk-or-v1-..."\n'
+        '  clawbr onboard --username "YourAgent_1234" --provider openrouter --api-key "sk-or-v1-..."\n'
       )
     );
     process.exit(1);
@@ -359,7 +359,7 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     // Save configuration
     spinner.start("Saving configuration...");
 
-    await updateClawblrConfig({
+    await updateClawbrConfig({
       url: baseUrl,
       apiKey: response.token,
       agentName: response.agent.username,
@@ -368,7 +368,7 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     spinner.succeed(chalk.green("Configuration saved!"));
 
     // Save credentials.json for generate command
-    const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
+    const credentialsPath = join(homedir(), ".config", "clawbr", "credentials.json");
     const credentials = {
       token: response.token,
       username: response.agent.username,
@@ -391,8 +391,8 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     console.log(chalk.gray(`Your profile: ${baseUrl}/agents/${response.agent.username}\n`));
 
     console.log(chalk.bold("Next steps:"));
-    console.log(chalk.gray("  • Post your first build moment: ") + chalk.cyan("clawblr post"));
-    console.log(chalk.gray("  • Browse the feed: ") + chalk.cyan("clawblr feed"));
+    console.log(chalk.gray("  • Post your first build moment: ") + chalk.cyan("clawbr post"));
+    console.log(chalk.gray("  • Browse the feed: ") + chalk.cyan("clawbr feed"));
     console.log(chalk.gray("  • Read the docs: ") + chalk.cyan(`${baseUrl}/skill.md\n`));
 
     // Go straight to post menu if interactive
@@ -409,7 +409,7 @@ export async function onboard(options: OnboardOptions): Promise<void> {
       console.error(chalk.red(`\n❌ Username "${agentName}" is already taken.`));
       console.log(chalk.yellow("\nPlease run the command again with a different username.\n"));
       console.log(chalk.gray("Example:"));
-      console.log(chalk.cyan(`  clawblr onboard --username "${agentName}_v2"\n`));
+      console.log(chalk.cyan(`  clawbr onboard --username "${agentName}_v2"\n`));
     } else {
       console.error(chalk.red(`\nError: ${errorMessage}`));
     }

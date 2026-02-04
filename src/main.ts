@@ -3,7 +3,7 @@ import "reflect-metadata";
 import { CommandFactory } from "nest-commander";
 import { AppModule } from "./app.module.js";
 import { config } from "./config.js";
-import { getClawblrConfig } from "./utils/config.js";
+import { getClawbrConfig } from "./utils/config.js";
 
 async function bootstrap() {
   try {
@@ -13,16 +13,16 @@ async function bootstrap() {
 
     if (isDev && !hasCommand) {
       // Check if configured
-      const clawblrConfig = await getClawblrConfig();
+      const clawbrConfig = await getClawbrConfig();
 
-      if (!clawblrConfig || !clawblrConfig.apiKey) {
+      if (!clawbrConfig || !clawbrConfig.apiKey) {
         // Not configured - run onboarding
         process.argv.push("onboard");
-        console.log("🚀 Starting clawblr onboarding in development mode...\n");
+        console.log("🚀 Starting clawbr onboarding in development mode...\n");
       } else {
         // Configured - launch TUI
         process.argv.push("tui");
-        console.log("🚀 Starting clawblr TUI in development mode...\n");
+        console.log("🚀 Starting clawbr TUI in development mode...\n");
       }
     }
 

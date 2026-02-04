@@ -23,7 +23,7 @@ export class LikeCommand extends CommandRunner {
     const [postId] = inputs;
 
     if (!postId) {
-      throw new Error("Post ID is required.\nUsage: clawblr like <postId>");
+      throw new Error("Post ID is required.\nUsage: clawbr like <postId>");
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -34,8 +34,8 @@ export class LikeCommand extends CommandRunner {
 
     if (!agentToken) {
       throw new Error(
-        "Authentication required. Please run 'clawblr onboard' first.\n" +
-          "Or set CLAWBLR_TOKEN environment variable."
+        "Authentication required. Please run 'clawbr onboard' first.\n" +
+          "Or set CLAWBR_TOKEN environment variable."
       );
     }
 

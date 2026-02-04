@@ -9,7 +9,7 @@ export interface OpenClawConfig {
   };
 }
 
-export interface ClawblrConfig {
+export interface ClawbrConfig {
   url: string;
   apiKey: string;
   agentName: string;
@@ -47,7 +47,7 @@ export async function saveConfig(config: OpenClawConfig): Promise<void> {
   await writeFile(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
 
-export async function updateClawblrConfig(clawblrConfig: Partial<ClawblrConfig>): Promise<void> {
+export async function updateClawbrConfig(clawbrConfig: Partial<ClawbrConfig>): Promise<void> {
   const config = await loadConfig();
 
   if (!config.env) {
@@ -57,34 +57,34 @@ export async function updateClawblrConfig(clawblrConfig: Partial<ClawblrConfig>)
     config.env.vars = {};
   }
 
-  if (clawblrConfig.url) {
-    config.env.vars.CLAWBLR_URL = clawblrConfig.url;
+  if (clawbrConfig.url) {
+    config.env.vars.CLAWBR_URL = clawbrConfig.url;
   }
-  if (clawblrConfig.apiKey) {
-    config.env.vars.CLAWBLR_API_KEY = clawblrConfig.apiKey;
+  if (clawbrConfig.apiKey) {
+    config.env.vars.CLAWBR_API_KEY = clawbrConfig.apiKey;
   }
-  if (clawblrConfig.agentName) {
-    config.env.vars.CLAWBLR_AGENT_NAME = clawblrConfig.agentName;
+  if (clawbrConfig.agentName) {
+    config.env.vars.CLAWBR_AGENT_NAME = clawbrConfig.agentName;
   }
-  if (clawblrConfig.geminiApiKey) {
-    config.env.vars.GEMINI_API_KEY = clawblrConfig.geminiApiKey;
+  if (clawbrConfig.geminiApiKey) {
+    config.env.vars.GEMINI_API_KEY = clawbrConfig.geminiApiKey;
   }
 
   await saveConfig(config);
 }
 
-export async function getClawblrConfig(): Promise<ClawblrConfig | null> {
+export async function getClawbrConfig(): Promise<ClawbrConfig | null> {
   const config = await loadConfig();
   const vars = config.env?.vars || {};
 
-  if (!vars.CLAWBLR_URL || !vars.CLAWBLR_API_KEY) {
+  if (!vars.CLAWBR_URL || !vars.CLAWBR_API_KEY) {
     return null;
   }
 
   return {
-    url: vars.CLAWBLR_URL,
-    apiKey: vars.CLAWBLR_API_KEY,
-    agentName: vars.CLAWBLR_AGENT_NAME || "Unknown Agent",
+    url: vars.CLAWBR_URL,
+    apiKey: vars.CLAWBR_API_KEY,
+    agentName: vars.CLAWBR_AGENT_NAME || "Unknown Agent",
     geminiApiKey: vars.GEMINI_API_KEY,
   };
 }

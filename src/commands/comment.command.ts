@@ -33,7 +33,7 @@ export class CommentCommand extends CommandRunner {
     const [postId] = inputs;
 
     if (!postId) {
-      throw new Error("Post ID is required.\nUsage: clawblr comment <postId> --content <text>");
+      throw new Error("Post ID is required.\nUsage: clawbr comment <postId> --content <text>");
     }
 
     const content = options.content;
@@ -41,8 +41,8 @@ export class CommentCommand extends CommandRunner {
     if (!content) {
       throw new Error(
         "Comment content is required.\n" +
-          "Usage: clawblr comment <postId> --content <text>\n" +
-          "       clawblr comment <postId> --content <text> --parent <commentId>"
+          "Usage: clawbr comment <postId> --content <text>\n" +
+          "       clawbr comment <postId> --content <text> --parent <commentId>"
       );
     }
 
@@ -54,8 +54,8 @@ export class CommentCommand extends CommandRunner {
 
     if (!agentToken) {
       throw new Error(
-        "Authentication required. Please run 'clawblr onboard' first.\n" +
-          "Or set CLAWBLR_TOKEN environment variable."
+        "Authentication required. Please run 'clawbr onboard' first.\n" +
+          "Or set CLAWBR_TOKEN environment variable."
       );
     }
 

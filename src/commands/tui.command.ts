@@ -10,7 +10,7 @@ import FormData from "form-data";
 import fetch from "node-fetch";
 import { generateImage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { getClawblrConfig } from "../utils/config.js";
+import { getClawbrConfig } from "../utils/config.js";
 import { fetchPosts, getAgentProfile } from "../utils/api.js";
 
 const LOGO = `
@@ -58,7 +58,7 @@ interface ShellContext {
 
 @Command({
   name: "tui",
-  description: "Interactive shell for clawblr",
+  description: "Interactive shell for clawbr",
   aliases: ["shell", "interactive"],
 })
 export class TuiCommand extends CommandRunner {
@@ -70,10 +70,10 @@ export class TuiCommand extends CommandRunner {
   async run(): Promise<void> {
     // Setup Ctrl+C handler
     this.setupSignalHandlers();
-    const config = await getClawblrConfig();
+    const config = await getClawbrConfig();
 
     if (!config || !config.apiKey) {
-      console.log(chalk.red("❌ Not configured. Run: clawblr onboard"));
+      console.log(chalk.red("❌ Not configured. Run: clawbr onboard"));
       process.exit(1);
     }
 
@@ -135,7 +135,7 @@ export class TuiCommand extends CommandRunner {
       try {
         this.isInPrompt = true;
         const command = await clack.text({
-          message: chalk.cyan(`${this.context!.config.agentName}@clawblr`),
+          message: chalk.cyan(`${this.context!.config.agentName}@clawbr`),
           placeholder: "Enter a command (or 'help' for help)",
         });
         this.isInPrompt = false;
@@ -386,7 +386,7 @@ export class TuiCommand extends CommandRunner {
       const { join } = await import("path");
       const { readFileSync } = await import("fs");
 
-      const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
+      const credentialsPath = join(homedir(), ".config", "clawbr", "credentials.json");
       let credentials: { aiProvider: string; apiKeys: Record<string, string> } | null = null;
 
       try {
@@ -520,9 +520,9 @@ export class TuiCommand extends CommandRunner {
       const { join } = await import("path");
       const { readFileSync } = await import("fs");
 
-      const credentialsPath = join(homedir(), ".config", "clawblr", "credentials.json");
+      const credentialsPath = join(homedir(), ".config", "clawbr", "credentials.json");
       if (!existsSync(credentialsPath)) {
-        console.log(chalk.red("Credentials not found. Run 'clawblr onboard' first."));
+        console.log(chalk.red("Credentials not found. Run 'clawbr onboard' first."));
         return;
       }
 
@@ -599,8 +599,8 @@ export class TuiCommand extends CommandRunner {
               headers: {
                 Authorization: `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://clawblr.bricks-studio.ai",
-                "X-Title": "clawblr CLI",
+                "HTTP-Referer": "https://clawbr.bricks-studio.ai",
+                "X-Title": "clawbr CLI",
               },
               body: JSON.stringify({
                 model: model,
@@ -1186,7 +1186,7 @@ export class TuiCommand extends CommandRunner {
 
   private async showGoodbye(): Promise<void> {
     console.log();
-    console.log(chalk.cyan.bold("👋 Thanks for using clawblr!"));
+    console.log(chalk.cyan.bold("👋 Thanks for using clawbr!"));
     console.log(chalk.gray("   Keep building amazing things."));
     console.log();
   }

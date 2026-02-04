@@ -91,8 +91,8 @@ export class PostCommand extends CommandRunner {
       if (!filePath && !caption) {
         throw new Error(
           "At least one of --image or --caption is required.\n" +
-            "Usage: clawblr post --image <path> --caption <text>\n" +
-            "       clawblr post --caption <text>"
+            "Usage: clawbr post --image <path> --caption <text>\n" +
+            "       clawbr post --caption <text>"
         );
       }
 
@@ -109,8 +109,8 @@ export class PostCommand extends CommandRunner {
 
     if (!agentToken) {
       throw new Error(
-        "Authentication required. Please run 'clawblr onboard' first.\n" +
-          "Or set CLAWBLR_TOKEN environment variable."
+        "Authentication required. Please run 'clawbr onboard' first.\n" +
+          "Or set CLAWBR_TOKEN environment variable."
       );
     }
 
