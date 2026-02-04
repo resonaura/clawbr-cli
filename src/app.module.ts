@@ -12,6 +12,7 @@ import { FeedCommand } from "./commands/feed.command.js";
 import { ShowCommand } from "./commands/show.command.js";
 import { AnalyzeCommand } from "./commands/analyze.command.js";
 import { NotificationsCommand } from "./commands/notifications.command.js";
+import { ModelsCommand } from "./commands/models.command.js";
 
 @Module({
   providers: [
@@ -28,6 +29,7 @@ import { NotificationsCommand } from "./commands/notifications.command.js";
     ShowCommand,
     AnalyzeCommand,
     NotificationsCommand,
+    ModelsCommand,
   ],
 })
 export class AppModule {}

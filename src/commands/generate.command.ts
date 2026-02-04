@@ -9,32 +9,24 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { loadCredentials } from "../utils/credentials.js";
 import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
+import {
+  getProviderModels,
+  getModelById,
+  isValidModel,
+  getPrimaryModel,
+  getFallbackModels,
+  supportsReferenceImage,
+  formatModelList,
+} from "../config/image-models.js";
 
 interface GenerateCommandOptions {
   prompt?: string;
   output?: string;
   size?: string;
   sourceImage?: string;
+  model?: string;
   json?: boolean;
 }
-
-/**
- * Model configurations for each provider with fallback chains
- */
-const MODEL_CONFIGS = {
-  openrouter: {
-    primary: "google/gemini-3-pro-image-preview",
-    fallbacks: ["google/gemini-2.5-flash-image-preview"],
-  },
-  openai: {
-    primary: "dall-e-3",
-    fallbacks: ["dall-e-2"], // OpenAI only has DALL-E models
-  },
-  google: {
-    primary: "imagen-4.0-generate-001",
-    fallbacks: ["imagen-4.0-fast-generate-001"], // Google Imagen models
-  },
-};
 
 @Command({
   name: "generate",
@@ -44,7 +36,7 @@ const MODEL_CONFIGS = {
 })
 export class GenerateCommand extends CommandRunner {
   async run(inputs: string[], options: GenerateCommandOptions): Promise<void> {
-    const { prompt, output, size = "1024x1024", sourceImage, json = false } = options;
+    const { prompt, output, size = "1024x1024", sourceImage, model, json = false } = options;
 
     // ─────────────────────────────────────────────────────────────────────
     // Validation
@@ -94,6 +86,31 @@ export class GenerateCommand extends CommandRunner {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Validate model if provided
+    // ─────────────────────────────────────────────────────────────────────
+    if (model && !isValidModel(aiProvider, model)) {
+      const availableModels = formatModelList(aiProvider);
+      throw new Error(
+        `Invalid model '${model}' for provider '${aiProvider}'.\n\nAvailable models:\n${availableModels}`
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Check reference image support
+    // ─────────────────────────────────────────────────────────────────────
+    if (sourceImage && model && !supportsReferenceImage(aiProvider, model)) {
+      const modelInfo = getModelById(aiProvider, model);
+      throw new Error(
+        `Model '${modelInfo?.name || model}' does not support reference images.\n\n` +
+          `For reference image support with ${aiProvider}, use one of:\n` +
+          getProviderModels(aiProvider)
+            .filter((m) => m.supportsReferenceImage)
+            .map((m) => `  • ${m.id}`)
+            .join("\n")
+      );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // Prepare source image if provided
     // ─────────────────────────────────────────────────────────────────────
     const sourceImageData = sourceImage ? encodeImageToDataUri(sourceImage) : undefined;
@@ -108,20 +125,24 @@ export class GenerateCommand extends CommandRunner {
     try {
       let imageBuffer: Buffer;
 
+      // Determine models to use
+      const primaryModel = model || getPrimaryModel(aiProvider);
+      const fallbackModels = model ? [] : getFallbackModels(aiProvider);
+
       if (aiProvider === "openrouter") {
         imageBuffer = await this.generateWithFallback(
           prompt,
           size,
           apiKey,
           "openrouter",
-          MODEL_CONFIGS.openrouter,
+          { primary: primaryModel, fallbacks: fallbackModels },
           spinner,
           sourceImageData
         );
       } else if (aiProvider === "openai") {
         if (sourceImageData) {
           throw new Error(
-            "OpenAI DALL-E does not support image-to-image generation. Use OpenRouter or Google instead."
+            "OpenAI does not support image-to-image generation. Use OpenRouter with a model that supports reference images."
           );
         }
         imageBuffer = await this.generateWithFallback(
@@ -129,13 +150,13 @@ export class GenerateCommand extends CommandRunner {
           size,
           apiKey,
           "openai",
-          MODEL_CONFIGS.openai,
+          { primary: primaryModel, fallbacks: fallbackModels },
           spinner
         );
       } else if (aiProvider === "google") {
         if (sourceImageData) {
           throw new Error(
-            "Google Imagen does not support image-to-image generation via this method. Use OpenRouter instead."
+            "Google Imagen does not support image-to-image generation. Use OpenRouter with a model that supports reference images."
           );
         }
         imageBuffer = await this.generateWithFallback(
@@ -143,7 +164,7 @@ export class GenerateCommand extends CommandRunner {
           size,
           apiKey,
           "google",
-          MODEL_CONFIGS.google,
+          { primary: primaryModel, fallbacks: fallbackModels },
           spinner
         );
       } else {
@@ -188,6 +209,9 @@ export class GenerateCommand extends CommandRunner {
         }
         console.log(`Output: ${outputPath}`);
         console.log(`Provider: ${aiProvider}`);
+        if (model) {
+          console.log(`Model: ${model}`);
+        }
         console.log("─────────────────────────────────────\n");
       }
     } catch (error) {
@@ -432,8 +456,17 @@ export class GenerateCommand extends CommandRunner {
   }
 
   @Option({
+    flags: "-m, --model <modelId>",
+    description:
+      "Specific model to use (provider-dependent). Use model ID from your provider's list. Note: Not all models support reference images (--source-image).",
+  })
+  parseModel(val: string): string {
+    return val;
+  }
+
+  @Option({
     flags: "--json",
-    description: "Output in JSON format",
+    description: "Output result in JSON format",
   })
   parseJson(): boolean {
     return true;

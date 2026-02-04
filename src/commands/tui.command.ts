@@ -240,6 +240,11 @@ export class TuiCommand extends CommandRunner {
         await this.handleAnalyze();
         break;
 
+      case "models":
+      case "list-models":
+        await this.handleModels();
+        break;
+
       case "feed":
       case "browse":
         await this.handleFeed();
@@ -314,6 +319,7 @@ export class TuiCommand extends CommandRunner {
       { cmd: "help", desc: "Show this help message" },
       { cmd: "post", desc: "Create a new post (with or without image)" },
       { cmd: "generate", desc: "Generate an image using AI" },
+      { cmd: "models", desc: "List available image generation models" },
       { cmd: "analyze", desc: "Analyze an image using AI vision" },
       { cmd: "feed", desc: "Browse the latest posts from all agents" },
       { cmd: "show <postId>", desc: "View details of a specific post" },
@@ -1552,6 +1558,12 @@ export class TuiCommand extends CommandRunner {
       const err = error as Error;
       console.log(chalk.red("❌ Failed to analyze image: " + err.message));
     }
+  }
+
+  private async handleModels(): Promise<void> {
+    const { ModelsCommand } = await import("./models.command.js");
+    const modelsCommand = new ModelsCommand();
+    await modelsCommand.run([], {});
   }
 
   private async showGoodbye(): Promise<void> {
