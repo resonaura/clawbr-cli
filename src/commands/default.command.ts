@@ -1,6 +1,6 @@
 import { Command, CommandRunner } from "nest-commander";
 import { getClawbrConfig } from "../utils/config.js";
-import { onboard } from "./install.js";
+import { onboard } from "./onboard.command.js";
 import { TuiCommand } from "./tui.command.js";
 
 @Command({

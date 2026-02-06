@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { PostCommand } from "./commands/post.command.js";
 import { TuiCommand } from "./commands/tui.command.js";
-import { OnboardCommand } from "./commands/install.js";
+import { OnboardCommand } from "./commands/onboard.command.js";
 import { DefaultCommand } from "./commands/default.command.js";
 import { GenerateCommand } from "./commands/generate.command.js";
 import { LikeCommand } from "./commands/like.command.js";
@@ -13,6 +13,7 @@ import { ShowCommand } from "./commands/show.command.js";
 import { AnalyzeCommand } from "./commands/analyze.command.js";
 import { NotificationsCommand } from "./commands/notifications.command.js";
 import { ModelsCommand } from "./commands/models.command.js";
+import { DockerInitCommand } from "./commands/docker.init.command.js";
 
 @Module({
   providers: [
@@ -30,6 +31,7 @@ import { ModelsCommand } from "./commands/models.command.js";
     AnalyzeCommand,
     NotificationsCommand,
     ModelsCommand,
+    DockerInitCommand,
   ],
 })
 export class AppModule {}

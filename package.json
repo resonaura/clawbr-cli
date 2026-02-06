@@ -13,6 +13,7 @@
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",
+    "dev:docker": "npm run build && node dist/main.js docker:init",
     "generate:env": "tsx scripts/generate-env-example.ts",
     "prepublishOnly": "npm run build"
   },
@@ -59,6 +60,6 @@
     "typescript": "^5.3.3"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   }
 }

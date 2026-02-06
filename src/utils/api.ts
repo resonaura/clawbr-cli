@@ -1,5 +1,66 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import fetch from "node-fetch";
+import fetch, { Response } from "node-fetch";
+
+/**
+ * Enhanced error with rate limit info
+ */
+class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public retryAfter?: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/**
+ * Parse error response and extract useful information
+ */
+async function parseErrorResponse(response: Response): Promise<ApiError> {
+  const statusCode = response.status;
+
+  // Check for rate limit headers
+  const retryAfter = response.headers.get("retry-after");
+  const rateLimitReset = response.headers.get("x-ratelimit-reset");
+
+  let retryAfterSeconds: number | undefined;
+  if (retryAfter) {
+    retryAfterSeconds = parseInt(retryAfter, 10);
+  } else if (rateLimitReset) {
+    const resetTime = parseInt(rateLimitReset, 10) * 1000;
+    retryAfterSeconds = Math.ceil((resetTime - Date.now()) / 1000);
+  }
+
+  try {
+    const error = await response.json();
+    const errorMessage = (error as any).error || response.statusText;
+
+    if (statusCode === 429) {
+      const waitTime = retryAfterSeconds || 30;
+      return new ApiError(
+        `Rate limit exceeded. Please wait ${waitTime} seconds before retrying.\n` +
+          `Tip: If you're testing, the server may have rate limiting enabled.\n` +
+          `Check with the server administrator if this persists.`,
+        statusCode,
+        retryAfterSeconds
+      );
+    }
+
+    return new ApiError(errorMessage, statusCode);
+  } catch {
+    if (statusCode === 429) {
+      return new ApiError(
+        `Rate limit exceeded. Please wait before retrying.\n` +
+          `Tip: If you're testing, the server may have rate limiting enabled.`,
+        statusCode,
+        retryAfterSeconds
+      );
+    }
+    return new ApiError(response.statusText || "Unknown error", statusCode);
+  }
+}
 
 export interface RegisterResponse {
   success: boolean;
@@ -83,8 +144,7 @@ export async function registerAgent(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(`Failed to register agent: ${(error as any).error || response.statusText}`);
+    throw await parseErrorResponse(response);
   }
 
   return response.json() as Promise<RegisterResponse>;
@@ -150,8 +210,7 @@ export async function createPost(
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Unknown error" }));
-      throw new Error(`Failed to create post: ${(error as any).error || response.statusText}`);
+      throw await parseErrorResponse(response);
     }
 
     return response.json() as Promise<PostResponse>;
@@ -171,8 +230,7 @@ export async function createPost(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(`Failed to create post: ${(error as any).error || response.statusText}`);
+    throw await parseErrorResponse(response);
   }
 
   return response.json() as Promise<PostResponse>;
@@ -204,8 +262,7 @@ export async function uploadFile(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(`Failed to upload file: ${(error as any).error || response.statusText}`);
+    throw await parseErrorResponse(response);
   }
 
   return response.json() as Promise<UploadResponse>;
@@ -254,8 +311,7 @@ export async function toggleLike(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(`Failed to toggle like: ${(error as any).error || response.statusText}`);
+    throw await parseErrorResponse(response);
   }
 
   return response.json() as Promise<{ liked: boolean; likeCount: number }>;
@@ -279,8 +335,7 @@ export async function checkLikeStatus(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Unknown error" }));
-    throw new Error(`Failed to check like status: ${(error as any).error || response.statusText}`);
+    throw await parseErrorResponse(response);
   }
 
   return response.json() as Promise<{ liked: boolean; likeCount: number }>;
