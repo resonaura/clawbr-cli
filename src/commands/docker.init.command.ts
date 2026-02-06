@@ -11,7 +11,6 @@ import { promisify } from "util";
 
 const execPromise = promisify(exec);
 import { registerAgent } from "../utils/api.js";
-import { randomBytes } from "crypto";
 import { createServer } from "net";
 
 interface AgentConfig {
@@ -21,7 +20,6 @@ interface AgentConfig {
   apiKey: string;
   port?: number;
   token?: string;
-  gatewayToken?: string;
 }
 
 @Command({
@@ -197,14 +195,6 @@ export class DockerInitCommand extends CommandRunner {
               agent.token = match[1].trim();
             }
 
-            const matchGateway = envContent.match(new RegExp(`${envPrefix}_OPENCLAW_TOKEN=(.+)`));
-            if (matchGateway && matchGateway[1]) {
-              agent.gatewayToken = matchGateway[1].trim();
-            } else {
-              // Generate if missing
-              agent.gatewayToken = randomBytes(16).toString("hex");
-            }
-
             // Extract port from docker-compose if possible
             // Look for ports mapping OR env var OPENCLAW_GATEWAY_PORT
             const serviceBlock =
@@ -229,11 +219,10 @@ export class DockerInitCommand extends CommandRunner {
           // This updates agent objects with new ports if conflicts exist
           await this.ensurePortsAreFree(agents);
 
-          // FORCE REGENERATION of docker-compose.yml to ensure correct config
+          // FORCE REGENERATION of configuration files to ensure correct config
           // This avoids messy regex patching and guarantees clean state
-          console.log(chalk.cyan("  ↺ Regenerating docker-compose.yml..."));
-          const newComposeContent = this.generateDockerCompose(agents);
-          await writeFile("docker-compose.yml", newComposeContent, "utf-8");
+          console.log(chalk.cyan("  ↺ Regenerating configuration files..."));
+          await this.generateDockerFiles(agents);
         } catch {
           // Ignore
         }
@@ -316,11 +305,7 @@ export class DockerInitCommand extends CommandRunner {
     agents.forEach((agent, idx) => {
       console.log(chalk.cyan(`  ${idx + 1}. ${agent.name} (@${agent.username})`));
       const openclawPort = agent.port || 18790 + idx;
-      console.log(
-        chalk.gray(
-          `     Dashboard: http://localhost:${openclawPort}?token=${agent.gatewayToken || ""}`
-        )
-      );
+      console.log(chalk.gray(`     Dashboard: http://localhost:${openclawPort}`));
       console.log(chalk.gray(`     Provider: ${agent.provider}\n`));
     });
 
@@ -678,8 +663,7 @@ export class DockerInitCommand extends CommandRunner {
       }
     }
 
-    const gatewayToken = randomBytes(16).toString("hex");
-    return { name, username, provider, apiKey, token, gatewayToken };
+    return { name, username, provider, apiKey, token };
   }
 
   private async generateDockerFiles(agents: AgentConfig[]): Promise<void> {
@@ -723,24 +707,43 @@ export class DockerInitCommand extends CommandRunner {
     ports:
       - "${openclawPort}:${openclawPort}"
     environment:
-      - OPENCLAW_GATEWAY_BIND=custom
-      - OPENCLAW_GATEWAY_IP=0.0.0.0
-      - OPENCLAW_GATEWAY_HOST=0.0.0.0
+      # Network binding - доступ с хоста
+      - OPENCLAW_GATEWAY_BIND=0.0.0.0
       - OPENCLAW_GATEWAY_PORT=${openclawPort}
-      - CLAWBR_API_URL=\${CLAWBR_API_URL:-https://clawbr.com}
-      - CLAWBR_TOKEN=\${${envPrefix}_TOKEN}
-      - OPENROUTER_API_KEY=\${${envPrefix}_OPENROUTER_KEY}
-      - GEMINI_API_KEY=\${${envPrefix}_GEMINI_KEY}
-      - OPENAI_API_KEY=\${${envPrefix}_OPENAI_KEY}
+      
+      # Clawbr API
+      - CLAWBR_API_URL=https://clawbr.com
+      - CLAWBR_TOKEN=${agent.token || ""}
+      
+      # AI Provider Keys
+      - OPENROUTER_API_KEY=${agent.provider === "openrouter" ? agent.apiKey : ""}
+      - GEMINI_API_KEY=${agent.provider === "google" ? agent.apiKey : ""}
+      - OPENAI_API_KEY=${agent.provider === "openai" ? agent.apiKey : ""}
+      
+      # Agent Identity
       - AGENT_NAME=${agent.name}
-      - OPENCLAW_GATEWAY_TOKEN=\${${envPrefix}_OPENCLAW_TOKEN}
-      - DEV_MODE=true
-      - OPENCLAW_DISABLE_AUTH=true
+      - OPENCLAW_GATEWAY_NAME=${agent.name.toLowerCase()}
+      
+      # ПОЛНОЕ ОТКЛЮЧЕНИЕ АВТОРИЗАЦИИ И ПЕЙРИНГА
+      - OPENCLAW_GATEWAY_AUTH=none
+      - OPENCLAW_AUTH_MODE=none
+      - OPENCLAW_GATEWAY_TOKEN=insecure
+      - OPENCLAW_CONTROL_UI_ALLOW_INSECURE_AUTH=true
       - OPENCLAW_CONTROL_UI_DANGEROUSLY_DISABLE_DEVICE_AUTH=true
+      - OPENCLAW_CONTROL_UI_DANGEROUSLY_DISABLE_PAIRING=true
+      - OPENCLAW_DISABLE_DEVICE_PAIRING=true
+      - OPENCLAW_AUTO_APPROVE_DEVICES=true
+      
+      # Отключение сетевых discovery сервисов
+      - OPENCLAW_MDNS_DISABLE=true
+      - OPENCLAW_BONJOUR_DISABLE=true
+      
+      # Dev mode для максимального упрощения
+      - DEV_MODE=true
+      - NODE_ENV=development
     volumes:
       - ./data/${serviceName}/config:/home/node/.config/clawbr
       - ./data/${serviceName}/workspace:/workspace
-      - ./data/${serviceName}/openclaw:/home/node/.openclaw
     working_dir: /workspace
     restart: unless-stopped`;
       })
@@ -755,6 +758,7 @@ ${services}
     const lines = [
       "# Clawbr Docker Multi-Agent Configuration",
       "# Generated by clawbr docker:init",
+      "# Авторизация OpenClaw отключена для упрощения",
       "",
       "CLAWBR_API_URL=https://clawbr.com",
       "",
@@ -764,11 +768,8 @@ ${services}
       const envPrefix = agent.name.toUpperCase();
       const openclawPort = agent.port || 18790 + idx;
       lines.push(`# Agent ${idx + 1}: ${agent.name} (@${agent.username})`);
-      lines.push(
-        `# OpenClaw Dashboard: http://localhost:${openclawPort}?token=${agent.gatewayToken || ""}`
-      );
+      lines.push(`# OpenClaw Dashboard: http://localhost:${openclawPort}`);
       lines.push(`${envPrefix}_TOKEN=${agent.token || ""}`);
-      lines.push(`${envPrefix}_OPENCLAW_TOKEN=${agent.gatewayToken || ""}`);
       lines.push(
         `${envPrefix}_OPENROUTER_KEY=${agent.provider === "openrouter" ? agent.apiKey : ""}`
       );
@@ -956,9 +957,8 @@ ${services}
       console.log(chalk.cyan(`  ${idx + 1}. ${agent.name} (@${agent.username})`));
       console.log(chalk.gray(`     Container: ${serviceName}`));
       console.log(chalk.gray(`     Provider: ${agent.provider}`));
-      console.log(
-        chalk.bold.magenta(`     🌐 OpenClaw Dashboard: http://localhost:${openclawPort}\n`)
-      );
+      console.log(chalk.bold.magenta(`     🌐 Dashboard: http://localhost:${openclawPort}`));
+      console.log(chalk.bold.green(`     ✓ Авторизация отключена - просто открой браузер!\n`));
     });
 
     console.log(chalk.bold.yellow("⚠️  OpenClaw Setup Required:\n"));

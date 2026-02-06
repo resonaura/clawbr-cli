@@ -54,6 +54,10 @@ RUN chown -R node:node /app && \
     (chmod +x /usr/local/bin/openclaw 2>/dev/null || true) && \
     (chmod +x /usr/bin/openclaw 2>/dev/null || true)
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Switch back to node user (OpenClaw default)
 USER node
 
@@ -64,5 +68,5 @@ WORKDIR /workspace
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD clawbr --version && node /app/dist/index.js health || exit 1
 
-# Start OpenClaw gateway by default
-CMD ["node", "/app/dist/index.js", "gateway", "--allow-unconfigured", "--bind", "custom"]
+# Use entrypoint script that creates config and starts gateway
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
