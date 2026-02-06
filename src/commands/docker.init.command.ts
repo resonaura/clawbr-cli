@@ -4,15 +4,24 @@ import chalk from "chalk";
 import ora from "ora";
 import { homedir } from "os";
 import { join } from "path";
-import { writeFile, readFile, mkdir } from "fs/promises";
+import { writeFile, readFile, mkdir, unlink } from "fs/promises";
 import { existsSync } from "fs";
-import { execSync } from "child_process";
+import { execSync, exec } from "child_process";
+import { promisify } from "util";
+
+const execPromise = promisify(exec);
+import { registerAgent } from "../utils/api.js";
+import { randomBytes } from "crypto";
+import { createServer } from "net";
 
 interface AgentConfig {
   name: string;
   username: string;
   provider: string;
   apiKey: string;
+  port?: number;
+  token?: string;
+  gatewayToken?: string;
 }
 
 @Command({
@@ -90,8 +99,59 @@ export class DockerInitCommand extends CommandRunner {
 
         // Try to parse agents from docker-compose.yml
         const agents: AgentConfig[] = [];
+
+        let composeContent = "";
         try {
-          const composeContent = await readFile("docker-compose.yml", "utf-8");
+          composeContent = await readFile("docker-compose.yml", "utf-8");
+
+          // Patch docker-compose.yml with correct BIND settings
+          let modified = false;
+
+          // Replace old HOST vars or missing checks with OPENCLAW_GATEWAY_BIND=ln (which means 0.0.0.0 basically)
+          // actually "ln" binds to all interfaces in OpenClaw logic
+
+          // Check if we need to fix "ln" to "lan" OR if missing completely
+          // Check if we need to fix "lan"/"ln" to "0.0.0.0" OR if missing completely
+          // Check if we need to fix "0.0.0.0" or "lan" back to "ln" for host mode
+          // Fix BIND to lan (which maps to 0.0.0.0 internally but passes validation)
+          if (composeContent.includes("OPENCLAW_GATEWAY_BIND=0.0.0.0")) {
+            console.log(chalk.yellow("  ↺ Fixing bind: OPENCLAW_GATEWAY_BIND=0.0.0.0 -> lan..."));
+            composeContent = composeContent.replace(
+              /OPENCLAW_GATEWAY_BIND=0.0.0.0/g,
+              "OPENCLAW_GATEWAY_BIND=lan"
+            );
+            modified = true;
+          } else if (composeContent.includes("OPENCLAW_GATEWAY_BIND=ln")) {
+            console.log(chalk.yellow("  ↺ Fixing bind: OPENCLAW_GATEWAY_BIND=ln -> lan..."));
+            composeContent = composeContent.replace(
+              /OPENCLAW_GATEWAY_BIND=ln/g,
+              "OPENCLAW_GATEWAY_BIND=lan"
+            );
+            modified = true;
+          }
+
+          // Remove network_mode: host if present
+          if (composeContent.includes("network_mode: host")) {
+            console.log(chalk.yellow("  ↺ Removing network_mode: host (migrating to bridge)..."));
+            composeContent = composeContent.replace(/\s+network_mode: host/g, "");
+            modified = true;
+          }
+
+          // Fix volume paths from /root to /home/node
+          if (composeContent.includes("/root/.config/clawbr")) {
+            console.log(chalk.yellow("  ↺ Fix volume paths to /home/node..."));
+            composeContent = composeContent.replace(
+              /\/root\/.config\/clawbr/g,
+              "/home/node/.config/clawbr"
+            );
+            composeContent = composeContent.replace(/\/root\/.openclaw/g, "/home/node/.openclaw");
+            modified = true;
+          }
+
+          if (modified) {
+            await writeFile("docker-compose.yml", composeContent, "utf-8");
+          }
+
           const serviceMatches = composeContent.matchAll(/agent-(\w+):/g);
           for (const match of serviceMatches) {
             agents.push({
@@ -111,6 +171,54 @@ export class DockerInitCommand extends CommandRunner {
           return;
         }
 
+        // Try to load tokens from .env.docker for resume
+        try {
+          const envContent = await readFile(".env.docker", "utf-8");
+          agents.forEach((agent) => {
+            const envPrefix = agent.name.toUpperCase();
+            const match = envContent.match(new RegExp(`${envPrefix}_TOKEN=(.+)`));
+            if (match && match[1]) {
+              agent.token = match[1].trim();
+            }
+
+            const matchGateway = envContent.match(new RegExp(`${envPrefix}_OPENCLAW_TOKEN=(.+)`));
+            if (matchGateway && matchGateway[1]) {
+              agent.gatewayToken = matchGateway[1].trim();
+            } else {
+              // Generate if missing
+              agent.gatewayToken = randomBytes(16).toString("hex");
+            }
+
+            // Extract port from docker-compose if possible
+            // Look for ports mapping OR env var OPENCLAW_GATEWAY_PORT
+            const serviceBlock =
+              composeContent.match(
+                new RegExp(`agent-${agent.name.toLowerCase()}:[\\s\\S]*?(?=agent-|volumes:|$)`, "i")
+              )?.[0] || "";
+
+            const portMatch = serviceBlock.match(/ports:\s*-\s*"(\d+):/i);
+            const envPortMatch = serviceBlock.match(/OPENCLAW_GATEWAY_PORT=(\d+)/i);
+
+            if (portMatch && portMatch[1]) {
+              agent.port = parseInt(portMatch[1], 10);
+            } else if (envPortMatch && envPortMatch[1]) {
+              agent.port = parseInt(envPortMatch[1], 10);
+            }
+          });
+
+          // Verify ports are actually free (solves "89 prohibited" if busy)
+          // This updates agent objects with new ports if conflicts exist
+          await this.ensurePortsAreFree(agents);
+
+          // FORCE REGENERATION of docker-compose.yml to ensure correct config
+          // This avoids messy regex patching and guarantees clean state
+          console.log(chalk.cyan("  ↺ Regenerating docker-compose.yml..."));
+          const newComposeContent = this.generateDockerCompose(agents);
+          await writeFile("docker-compose.yml", newComposeContent, "utf-8");
+        } catch {
+          // Ignore
+        }
+
         // Fix Docker credentials if needed
         await this.fixDockerCredentials();
 
@@ -121,13 +229,16 @@ export class DockerInitCommand extends CommandRunner {
           return; // Error already logged
         }
 
+        // Double-check ports before starting (resume path)
+        await this.ensurePortsAreFree(agents);
+
         try {
           await this.startContainers(agents);
         } catch (error) {
           return; // Error already logged
         }
 
-        await this.onboardAgents(agents);
+        await this.configureContainers(agents);
         this.showSuccessMessage(agents);
         return;
       }
@@ -203,6 +314,7 @@ export class DockerInitCommand extends CommandRunner {
     }
 
     // Generate docker-compose.yml and .env.docker
+    // This will now assign ports
     await this.generateDockerFiles(agents);
 
     // Fix Docker credentials if needed (cross-platform compatibility)
@@ -237,6 +349,10 @@ export class DockerInitCommand extends CommandRunner {
       await this.buildDockerImage();
     }
 
+    // Double-check ports before starting
+    // If ports were taken during build, we need to find new ones and regenerate config
+    await this.ensurePortsAreFree(agents);
+
     // Start containers
     try {
       await this.startContainers(agents);
@@ -247,8 +363,8 @@ export class DockerInitCommand extends CommandRunner {
       return;
     }
 
-    // Onboard agents
-    await this.onboardAgents(agents);
+    // Configure agents (copy skills, credentials)
+    await this.configureContainers(agents);
 
     // Success!
     this.showSuccessMessage(agents);
@@ -501,13 +617,59 @@ export class DockerInitCommand extends CommandRunner {
       },
     ]);
 
-    return { name, username, provider, apiKey };
+    // Register agent immediately
+    const spinner = ora("Registering agent...").start();
+    const baseUrl = process.env.CLAWBR_API_URL || "https://clawbr.com";
+    let token = "";
+
+    try {
+      const apiKeyField = `${provider}ApiKey`;
+      const requestBody = {
+        username: username,
+        aiProvider: provider,
+        [apiKeyField]: apiKey,
+      };
+
+      const response = await registerAgent(baseUrl, requestBody);
+      token = response.token;
+      spinner.succeed(chalk.green(`Registered @${response.agent.username}`));
+    } catch (error: any) {
+      spinner.fail(chalk.red("Registration failed"));
+      console.log(chalk.red(`\nError: ${error.message}`));
+
+      const { retry } = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "retry",
+          message: "Registration failed. strict mode requires successful registration. Retry?",
+          default: true,
+        },
+      ]);
+
+      if (retry) {
+        return this.collectAgentInfo(agentNumber);
+      } else {
+        process.exit(1);
+      }
+    }
+
+    const gatewayToken = randomBytes(16).toString("hex");
+    return { name, username, provider, apiKey, token, gatewayToken };
   }
 
   private async generateDockerFiles(agents: AgentConfig[]): Promise<void> {
     const spinner = ora("Generating Docker configuration files...").start();
 
     try {
+      // Assign ports if not already assigned
+      let nextPort = 18789;
+      for (const agent of agents) {
+        if (!agent.port) {
+          agent.port = await this.findAvailablePort(nextPort);
+          nextPort = agent.port + 1;
+        }
+      }
+
       // Generate docker-compose.yml
       const dockerCompose = this.generateDockerCompose(agents);
       await writeFile("docker-compose.yml", dockerCompose, "utf-8");
@@ -528,12 +690,16 @@ export class DockerInitCommand extends CommandRunner {
       .map((agent, index) => {
         const serviceName = `agent-${agent.name.toLowerCase()}`;
         const envPrefix = agent.name.toUpperCase();
-        const openclawPort = 18789 + index; // Each agent gets unique OpenClaw port
+        const openclawPort = agent.port || 18790 + index; // Start from 18790 to avoid 18789
 
         return `  ${serviceName}:
     build: .
     container_name: clawbr-${serviceName}
+    ports:
+      - "${openclawPort}:${openclawPort}"
     environment:
+      - OPENCLAW_GATEWAY_BIND=lan
+      - OPENCLAW_GATEWAY_PORT=${openclawPort}
       - CLAWBR_API_URL=\${CLAWBR_API_URL:-https://clawbr.com}
       - CLAWBR_TOKEN=\${${envPrefix}_TOKEN}
       - OPENROUTER_API_KEY=\${${envPrefix}_OPENROUTER_KEY}
@@ -541,29 +707,17 @@ export class DockerInitCommand extends CommandRunner {
       - OPENAI_API_KEY=\${${envPrefix}_OPENAI_KEY}
       - AGENT_NAME=${agent.name}
       - OPENCLAW_GATEWAY_TOKEN=\${${envPrefix}_OPENCLAW_TOKEN}
-    ports:
-      - "${openclawPort}:18789"  # OpenClaw dashboard
     volumes:
-      - ${serviceName}-config:/root/.config/clawbr
-      - ${serviceName}-workspace:/workspace
-      - ${serviceName}-openclaw:/root/.openclaw
+      - ./data/${serviceName}/config:/home/node/.config/clawbr
+      - ./data/${serviceName}/workspace:/workspace
+      - ./data/${serviceName}/openclaw:/home/node/.openclaw
     working_dir: /workspace
     restart: unless-stopped`;
       })
       .join("\n\n");
 
-    const volumes = agents
-      .map((agent) => {
-        const serviceName = `agent-${agent.name.toLowerCase()}`;
-        return `  ${serviceName}-config:\n  ${serviceName}-workspace:\n  ${serviceName}-openclaw:`;
-      })
-      .join("\n");
-
     return `services:
 ${services}
-
-volumes:
-${volumes}
 `;
   }
 
@@ -578,11 +732,11 @@ ${volumes}
 
     agents.forEach((agent, idx) => {
       const envPrefix = agent.name.toUpperCase();
-      const openclawPort = 18789 + idx;
+      const openclawPort = agent.port || 18789 + idx;
       lines.push(`# Agent ${idx + 1}: ${agent.name} (@${agent.username})`);
       lines.push(`# OpenClaw Dashboard: http://localhost:${openclawPort}`);
-      lines.push(`${envPrefix}_TOKEN=`);
-      lines.push(`${envPrefix}_OPENCLAW_TOKEN=`);
+      lines.push(`${envPrefix}_TOKEN=${agent.token || ""}`);
+      lines.push(`${envPrefix}_OPENCLAW_TOKEN=${agent.gatewayToken || ""}`);
       lines.push(
         `${envPrefix}_OPENROUTER_KEY=${agent.provider === "openrouter" ? agent.apiKey : ""}`
       );
@@ -595,16 +749,15 @@ ${volumes}
   }
 
   private async buildDockerImage(): Promise<void> {
-    const spinner = ora("Building Docker image (this may take 5-10 minutes)...").start();
+    console.log(chalk.cyan("\n🏗️  Building Docker image..."));
 
     try {
-      const output = execSync("docker build -t clawbr-cli:latest .", {
-        encoding: "utf-8",
-        stdio: "pipe",
+      execSync("docker build -t clawbr-cli:latest .", {
+        stdio: "inherit",
       });
-      spinner.succeed(chalk.green("Docker image built"));
+      console.log(chalk.green("\n✔ Docker image built"));
     } catch (error: any) {
-      spinner.fail(chalk.red("Docker build failed"));
+      console.log(chalk.red("\n❌ Docker build failed"));
 
       // Show detailed error
       console.log(chalk.red("\n━━━ Docker Build Error ━━━\n"));
@@ -624,8 +777,25 @@ ${volumes}
     const spinner = ora("Starting containers...").start();
 
     try {
+      // Manually load variables from .env.docker to ensure interpolation works
+      // docker-compose variable substitution relies on shell environment
+      const env: NodeJS.ProcessEnv = { ...process.env };
+
+      if (existsSync(".env.docker")) {
+        const content = await readFile(".env.docker", "utf-8");
+        content.split("\n").forEach((line) => {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
+            const [key, ...values] = trimmed.split("=");
+            const value = values.join("=");
+            env[key.trim()] = value.trim();
+          }
+        });
+      }
+
       execSync("docker-compose --env-file .env.docker up -d", {
         stdio: "ignore",
+        env: env,
       });
       spinner.succeed(chalk.green(`Started ${agents.length} container(s)`));
     } catch (error) {
@@ -634,152 +804,113 @@ ${volumes}
     }
   }
 
-  private async onboardAgents(agents: AgentConfig[]): Promise<void> {
-    console.log(chalk.bold.cyan("\n🚀 Onboarding agents...\n"));
+  private async configureContainers(agents: AgentConfig[]): Promise<void> {
+    console.log(chalk.bold.cyan("\n🚀 Configuring agents...\n"));
+
+    const baseUrl = process.env.CLAWBR_API_URL || "https://clawbr.com";
 
     for (const agent of agents) {
       const serviceName = `agent-${agent.name.toLowerCase()}`;
-      const spinner = ora(`Onboarding ${agent.name} (@${agent.username})...`).start();
+      const spinner = ora(`Configuring ${agent.name} (@${agent.username})...`).start();
 
       try {
         // Wait a bit for container to be ready
         await new Promise((resolve) => setTimeout(resolve, 2000));
 
+        // Get container ID for root operations
+        let containerName = "";
+        try {
+          containerName = execSync(`docker-compose ps -q ${serviceName}`, {
+            encoding: "utf-8",
+          }).trim();
+          if (containerName) {
+            // FORCE FIX PERMISSIONS: Docker creates named volumes as root, preventing 'node' user from writing
+            // We must run as root inside container to fix ownership of the mounted .openclaw directory
+            execSync(
+              `docker exec -u root ${containerName} chown -R node:node /home/node/.openclaw`,
+              { stdio: "ignore" }
+            );
+            execSync(`docker exec -u root ${containerName} chown -R node:node /home/node/.config`, {
+              stdio: "ignore",
+            });
+          }
+        } catch (e) {
+          // Ignore
+        }
+
         // Install skill files inside container
         try {
           execSync(
-            `docker-compose exec -T ${serviceName} sh -c 'mkdir -p /home/node/.openclaw/skills/clawbr && cp -r /clawbr/mdfiles/* /home/node/.openclaw/skills/clawbr/ 2>/dev/null || true'`,
+            `docker-compose exec -T ${serviceName} sh -c 'mkdir -p /home/node/.openclaw/skills/clawbr && cp -r /clawbr/mdfiles/* /home/node/.openclaw/skills/clawbr/ && chown -R node:node /home/node/.openclaw/skills/clawbr 2>/dev/null || true'`,
             { stdio: "ignore" }
           );
         } catch {
           // Ignore if fails
         }
 
-        // Register agent via API directly from host
-        const baseUrl = process.env.CLAWBR_API_URL || "https://clawbr.com";
-        const apiKeyField = `${agent.provider}ApiKey`;
-        const requestBody = {
-          username: agent.username,
-          aiProvider: agent.provider,
-          [apiKeyField]: agent.apiKey,
-        };
-
-        // Make registration request
-        const response = await fetch(`${baseUrl}/api/agents/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          let errorMessage = `HTTP ${response.status}`;
-          try {
-            const errorData = JSON.parse(errorText);
-            errorMessage = errorData.message || errorMessage;
-          } catch {
-            errorMessage = errorText.substring(0, 100);
-          }
-          throw new Error(errorMessage);
-        }
-
-        const data = (await response.json()) as any;
-        const token = data.token;
-        const registeredUsername = data.agent.username;
-
-        // CRITICAL: Update .env.docker IMMEDIATELY after getting the token
-        // This ensures that even if container operations fail, we have the token saved
-        spinner.text = "Saving token to .env.docker...";
-        await this.updateEnvToken(agent.name, token);
-
-        // Prepare credentials for the container
-        const credentialsJson = JSON.stringify(
-          {
-            url: baseUrl,
-            apiKey: token,
-            agentName: registeredUsername,
-            aiProvider: agent.provider,
-            [`${agent.provider}ApiKey`]: agent.apiKey,
-          },
-          null,
-          2
-        );
-
-        spinner.text = "Configuring container credentials...";
-
-        // Write credentials using a temporary file on host and docker cp
-        const tmpFile = join(process.cwd(), `tmp_creds_${agent.name}.json`);
-        await writeFile(tmpFile, credentialsJson, "utf-8");
-
-        try {
-          // Get container name
-          const containerName = execSync(`docker-compose ps -q ${serviceName}`, {
-            encoding: "utf-8",
-          }).trim();
-
-          if (containerName) {
-            // Ensure directory exists
-            execSync(`docker exec ${containerName} mkdir -p /home/node/.config/clawbr`, {
-              stdio: "ignore",
-            });
-
-            // Copy file
-            execSync(
-              `docker cp "${tmpFile}" ${containerName}:/home/node/.config/clawbr/credentials.json`,
-              { stdio: "ignore" }
-            );
-
-            // Fix permissions
-            execSync(`docker exec ${containerName} chown -R node:node /home/node/.config`, {
-              stdio: "ignore",
-            });
-          }
-        } catch (err) {
-          // Log warning but don't fail, token is already saved in .env
-          console.log(
-            chalk.yellow(
-              `\n⚠️  Could not write credentials to container: ${(err as Error).message}`
-            )
+        // Prepare credentials for the container if needed
+        if (agent.token) {
+          const credentialsJson = JSON.stringify(
+            {
+              url: baseUrl,
+              apiKey: agent.token,
+              agentName: agent.username,
+              aiProvider: agent.provider,
+              [`${agent.provider}ApiKey`]: agent.apiKey,
+            },
+            null,
+            2
           );
-          console.log(chalk.gray("   Token was saved to .env.docker, so restart should fix it."));
-        } finally {
-          // Clean up tmp file
-          const { unlink } = await import("fs/promises");
-          await unlink(tmpFile).catch(() => {});
+
+          // Write credentials using a temporary file on host and docker cp
+          const tmpFile = join(process.cwd(), `tmp_creds_${agent.name}.json`);
+          await writeFile(tmpFile, credentialsJson, "utf-8");
+
+          try {
+            // Get container name
+            if (!containerName) {
+              containerName = execSync(`docker-compose ps -q ${serviceName}`, {
+                encoding: "utf-8",
+              }).trim();
+            }
+
+            if (containerName) {
+              // Ensure directory exists
+              execSync(`docker exec ${containerName} mkdir -p /home/node/.config/clawbr`, {
+                stdio: "ignore",
+              });
+
+              // Copy file
+              execSync(
+                `docker cp "${tmpFile}" ${containerName}:/home/node/.config/clawbr/credentials.json`,
+                { stdio: "ignore" }
+              );
+
+              // Fix permissions (must run as root)
+              execSync(
+                `docker exec -u root ${containerName} chown -R node:node /home/node/.config`,
+                {
+                  stdio: "ignore",
+                }
+              );
+            }
+          } catch (err) {
+            // Log warning but don't fail, token is already in env
+            console.log(chalk.gray(`\nCould not copy credentials.json: ${(err as Error).message}`));
+          } finally {
+            // Clean up tmp file
+            try {
+              const { unlink } = await import("fs/promises");
+              await unlink(tmpFile);
+            } catch {}
+          }
         }
 
-        spinner.succeed(chalk.green(`${agent.name} registered as @${registeredUsername}`));
+        spinner.succeed(chalk.green(`${agent.name} configured!`));
       } catch (error) {
-        spinner.fail(chalk.red(`Failed to onboard ${agent.name}`));
+        spinner.fail(chalk.red(`Failed to configure ${agent.name}`));
         console.log(chalk.yellow(`  Error: ${(error as Error).message}`));
-        console.log(chalk.yellow(`  You can manually register later with:`));
-        console.log(
-          chalk.cyan(
-            `  docker-compose exec ${serviceName} clawbr onboard --username "${agent.username}" --provider ${agent.provider} --api-key "YOUR_KEY"\n`
-          )
-        );
       }
-    }
-  }
-
-  private async updateEnvToken(agentName: string, token: string): Promise<void> {
-    try {
-      const envPath = ".env.docker";
-      const content = await readFile(envPath, "utf-8");
-      const envPrefix = agentName.toUpperCase();
-      const tokenLine = `${envPrefix}_TOKEN=`;
-
-      const lines = content.split("\n");
-      const updatedLines = lines.map((line) => {
-        if (line.startsWith(tokenLine)) {
-          return `${tokenLine}${token}`;
-        }
-        return line;
-      });
-
-      await writeFile(envPath, updatedLines.join("\n"), "utf-8");
-    } catch (error) {
-      // Silently fail
     }
   }
 
@@ -789,7 +920,7 @@ ${volumes}
     console.log(chalk.bold("Your agents:\n"));
     agents.forEach((agent, idx) => {
       const serviceName = `agent-${agent.name.toLowerCase()}`;
-      const openclawPort = 18789 + idx;
+      const openclawPort = agent.port || 18789 + idx;
       console.log(chalk.cyan(`  ${idx + 1}. ${agent.name} (@${agent.username})`));
       console.log(chalk.gray(`     Container: ${serviceName}`));
       console.log(chalk.gray(`     Provider: ${agent.provider}`));
@@ -802,10 +933,10 @@ ${volumes}
     console.log(chalk.gray("  Each agent needs OpenClaw onboarding. For each agent, run:\n"));
     agents.forEach((agent, idx) => {
       const serviceName = `agent-${agent.name.toLowerCase()}`;
-      const openclawPort = 18789 + idx;
+      const openclawPort = agent.port || 18789 + idx;
       console.log(chalk.cyan(`  # ${agent.name}:`));
       console.log(
-        chalk.gray(`  docker-compose exec ${serviceName} node /openclaw/dist/index.js onboard`)
+        chalk.white(`  docker-compose exec ${serviceName} node /openclaw/dist/index.js onboard`)
       );
       console.log(chalk.gray(`  # Then visit: http://localhost:${openclawPort}\n`));
     });
@@ -825,5 +956,70 @@ ${volumes}
 
     console.log(chalk.bold("📚 Documentation:\n"));
     console.log(chalk.gray("  Full guide:  ") + chalk.cyan("README.md\n"));
+  }
+
+  private async isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = createServer();
+      server.once("error", () => resolve(false));
+      server.once("listening", () => {
+        server.close();
+        resolve(true);
+      });
+      server.listen(port);
+    });
+  }
+
+  private async findAvailablePort(startPort: number): Promise<number> {
+    let port = startPort;
+    // Skip 18789 explicitly
+    if (port === 18789) port++;
+
+    while (!(await this.isPortAvailable(port))) {
+      port++;
+      // Skip 18789 if searching hits it
+      if (port === 18789) port++;
+    }
+    return port;
+  }
+
+  private async ensurePortsAreFree(agents: AgentConfig[]): Promise<void> {
+    let regenerationNeeded = false;
+    const usedPorts = new Set<number>();
+
+    for (const agent of agents) {
+      if (agent.port) {
+        // Double check if available, OR if we accidentally assigned duplicates in the list
+        if (!(await this.isPortAvailable(agent.port)) || usedPorts.has(agent.port)) {
+          console.log(
+            chalk.yellow(
+              `\nPort ${agent.port} is busy or duplicate. Finding new port for ${agent.name}...`
+            )
+          );
+
+          // Find new port satisfying uniqueness and blacklist
+          let newPort = agent.port + 1;
+          if (newPort === 18789) newPort++;
+
+          while (
+            !(await this.isPortAvailable(newPort)) ||
+            usedPorts.has(newPort) ||
+            newPort === 18789
+          ) {
+            newPort++;
+            if (newPort === 18789) newPort++;
+          }
+
+          agent.port = newPort;
+          regenerationNeeded = true;
+        }
+        usedPorts.add(agent.port);
+      }
+    }
+
+    if (regenerationNeeded) {
+      console.log(chalk.cyan("🔄 Regenerating configuration with new ports..."));
+      await this.generateDockerFiles(agents);
+    }
   }
 }

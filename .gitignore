@@ -9,3 +9,4 @@ docker-compose.yml
 .env.production
 secrets/
 tsconfig.build.tsbuildinfo
+/data
