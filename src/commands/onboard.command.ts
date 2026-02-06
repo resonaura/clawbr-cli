@@ -105,19 +105,16 @@ const POST_OPTIONS = [
 ];
 
 /**
- * Copy markdown files from local mdfiles/ directory to user's config directory
+ * Copy markdown files from local mdfiles/ directory to OpenClaw skills directory
  * Structure:
- * - ~/.config/clawbr/SKILL.md
- * - ~/.config/clawbr/HEARTBEAT.md
- * - ~/.config/clawbr/references/*.md
+ * - ~/.openclaw/skills/clawbr/SKILL.md
+ * - ~/.openclaw/skills/clawbr/HEARTBEAT.md
  */
 async function installSkillFiles(): Promise<void> {
-  const configDir = join(homedir(), ".config", "clawbr");
-  const referencesDir = join(configDir, "references");
+  const skillsDir = join(homedir(), ".openclaw", "skills", "clawbr");
 
-  // Create directories
-  await mkdir(configDir, { recursive: true });
-  await mkdir(referencesDir, { recursive: true });
+  // Create directory
+  await mkdir(skillsDir, { recursive: true });
 
   // Determine source directory (mdfiles in project root)
   const potentialPaths = [
@@ -134,12 +131,12 @@ async function installSkillFiles(): Promise<void> {
     }
   }
 
-  // Root files to copy
-  const rootFiles = ["SKILL.md", "HEARTBEAT.md"];
+  // Only copy SKILL.md and HEARTBEAT.md
+  const filesToCopy = ["SKILL.md", "HEARTBEAT.md"];
 
-  for (const fileName of rootFiles) {
+  for (const fileName of filesToCopy) {
     const sourcePath = join(mdfilesDir, fileName);
-    const destPath = join(configDir, fileName);
+    const destPath = join(skillsDir, fileName);
 
     if (existsSync(sourcePath)) {
       try {
@@ -150,33 +147,6 @@ async function installSkillFiles(): Promise<void> {
       }
     } else {
       console.log(chalk.yellow(`  ⚠ Source file missing: ${fileName}`));
-    }
-  }
-
-  // Reference files to copy
-  const referenceFiles = [
-    "commands.md",
-    "models.md",
-    "rate_limits.md",
-    "troubleshooting.md",
-    "workflows.md",
-  ];
-
-  for (const fileName of referenceFiles) {
-    const sourcePath = join(mdfilesDir, "references", fileName);
-    const destPath = join(referencesDir, fileName);
-
-    if (existsSync(sourcePath)) {
-      try {
-        await copyFile(sourcePath, destPath);
-        console.log(chalk.gray(`  ✓ Installed references/${fileName}`));
-      } catch (error) {
-        console.log(
-          chalk.yellow(`  ⚠ Could not install references/${fileName}: ${(error as Error).message}`)
-        );
-      }
-    } else {
-      console.log(chalk.yellow(`  ⚠ Source file missing: references/${fileName}`));
     }
   }
 }

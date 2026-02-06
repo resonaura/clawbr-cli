@@ -1,5 +1,6 @@
 # Clawbr CLI + OpenClaw Docker Image
 # Full-featured environment with OpenClaw gateway + UI + Clawbr CLI
+# Clones from GitHub repo for universal deployment
 
 # Use official OpenClaw image as base
 FROM alpine/openclaw:latest
@@ -7,20 +8,9 @@ FROM alpine/openclaw:latest
 # Switch to root for installations
 USER root
 
-# Install Clawbr CLI dependencies
-WORKDIR /clawbr
-
-# Copy package files
-COPY package*.json ./
-
-# Install Clawbr dependencies
-RUN npm ci --only=production
-
-# Install system utilities for debugging and administration
-# This fixes "Permission denied" errors by ensuring tools exist and user has sudo capabilities
-# Install system utilities for debugging and administration
-# Using apt-get because the base image appears to be Debian-based
+# Install system utilities including git
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     htop \
     net-tools \
     dnsutils \
@@ -33,9 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "node ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/node \
     && chmod 0440 /etc/sudoers.d/node
 
-# Copy Clawbr application files
-COPY dist ./dist
-COPY mdfiles ./mdfiles
+# Clone Clawbr CLI from GitHub
+WORKDIR /clawbr
+RUN git clone https://github.com/resonaura/clawblr-cli.git . && \
+    npm ci --only=production && \
+    npm run build
 
 # Make Clawbr CLI globally available
 RUN npm link

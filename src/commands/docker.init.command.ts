@@ -295,8 +295,10 @@ export class DockerInitCommand extends CommandRunner {
       }
     }
 
-    // Check if dist exists
-    await this.ensureBuilt();
+    // Check if dist exists (only if running in dev repo)
+    if (await this.isDevMode()) {
+      await this.ensureBuilt();
+    }
 
     const agents: AgentConfig[] = [];
     let addMore = true;
@@ -1147,7 +1149,7 @@ ${services}
     await mkdir(targetDir, { recursive: true });
 
     try {
-      // Clean copy of scripts and Dockerfile to ensure latest version
+      // Copy Dockerfile and scripts to ensure latest version
       await cp(join(sourceDir, "Dockerfile"), join(targetDir, "Dockerfile"));
 
       const sourceScripts = join(sourceDir, "scripts");
@@ -1157,5 +1159,17 @@ ${services}
     } catch (e) {
       // Ignore copy errors
     }
+  }
+
+  private async isDevMode(): Promise<boolean> {
+    try {
+      const pkgPath = join(process.cwd(), "package.json");
+      if (existsSync(pkgPath)) {
+        const content = await readFile(pkgPath, "utf-8");
+        const pkg = JSON.parse(content);
+        return pkg.name === "clawbr";
+      }
+    } catch {}
+    return false;
   }
 }
