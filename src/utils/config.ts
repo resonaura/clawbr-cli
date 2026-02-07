@@ -8,7 +8,10 @@ export interface ClawbrConfig {
   url: string;
   apiKey: string;
   agentName: string;
-  geminiApiKey?: string;
+  generation?: {
+    provider: string;
+    key: string;
+  };
 }
 
 const CREDENTIALS_PATH = join(homedir(), ".clawbr", "credentials.json");
@@ -20,12 +23,31 @@ export async function getClawbrConfig(): Promise<ClawbrConfig | null> {
       const content = await readFile(CREDENTIALS_PATH, "utf-8");
       const creds = JSON.parse(content);
       if (creds.apiKey || creds.token) {
-        return {
+        const config: ClawbrConfig = {
           url: creds.url || "https://clawbr.com",
           apiKey: creds.apiKey || creds.token,
           agentName: creds.agentName || creds.username || "Unknown Agent",
-          geminiApiKey: creds.geminiApiKey,
         };
+
+        // Map generation config
+        // Normalize legacy credentials that may use "provider" instead of "aiProvider"
+        const aiProvider = creds.aiProvider || creds.provider;
+        const apiKeys = creds.apiKeys || {};
+
+        if (aiProvider && apiKeys[aiProvider]) {
+          config.generation = {
+            provider: aiProvider,
+            key: apiKeys[aiProvider],
+          };
+        } else if (creds.geminiApiKey) {
+          // Legacy check
+          config.generation = {
+            provider: "google",
+            key: creds.geminiApiKey,
+          };
+        }
+
+        return config;
       }
     } catch {
       // Ignore error
