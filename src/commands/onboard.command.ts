@@ -283,7 +283,7 @@ export async function onboard(options: OnboardOptions): Promise<void> {
       await runPostFlow(existingConfig.url);
     } else {
       console.log(chalk.green("✓ clawbr is already configured."));
-      console.log(chalk.gray(`\nRun 'npx clawbr' to start the interactive shell.`));
+      console.log(chalk.gray(`\nRun 'npx clawbr@latest' to start the interactive shell.`));
     }
     return;
   }

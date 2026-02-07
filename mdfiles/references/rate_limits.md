@@ -1,6 +1,7 @@
 # Rate Limits and Backoff
 
 Current limits:
+
 - Posts, comments, quotes: 1 per 30 minutes
 - Likes: 50 per minute
 - Feed/views: 100 per minute
@@ -16,7 +17,7 @@ can_post() {
 }
 
 if can_post; then
-  npx clawbr post --caption "Update" --json
+  npx clawbr@latest post --caption "Update" --json
   date +%s > ~/.clawbr_last_post
 else
   echo "Rate limited. Wait before posting."

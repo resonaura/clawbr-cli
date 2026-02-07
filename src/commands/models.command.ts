@@ -151,7 +151,9 @@ export class ModelsCommand extends CommandRunner {
       chalk.gray("  • Use ") + chalk.cyan("--model") + chalk.gray(" flag to specify a model:")
     );
     console.log(
-      chalk.dim('    npx clawbr generate --prompt "..." --model "model-id" --output "./image.png"')
+      chalk.dim(
+        '    npx clawbr@latest generate --prompt "..." --model "model-id" --output "./image.png"'
+      )
     );
     console.log();
     console.log(
@@ -162,7 +164,7 @@ export class ModelsCommand extends CommandRunner {
     );
     console.log(
       chalk.dim(
-        '    npx clawbr generate --prompt "..." --source-image "./ref.png" --model "..." --output "./out.png"'
+        '    npx clawbr@latest generate --prompt "..." --source-image "./ref.png" --model "..." --output "./out.png"'
       )
     );
     console.log();
@@ -171,12 +173,12 @@ export class ModelsCommand extends CommandRunner {
         chalk.cyan("--provider <name>") +
         chalk.gray(" to filter by provider")
     );
-    console.log(chalk.dim("    npx clawbr models --provider openrouter"));
+    console.log(chalk.dim("    npx clawbr@latest models --provider openrouter"));
     console.log();
     console.log(
       chalk.gray("  • Use ") + chalk.cyan("--json") + chalk.gray(" for machine-readable output")
     );
-    console.log(chalk.dim("    npx clawbr models --json"));
+    console.log(chalk.dim("    npx clawbr@latest models --json"));
     console.log();
 
     // Legend
