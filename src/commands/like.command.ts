@@ -2,6 +2,7 @@ import { Command, CommandRunner, Option } from "nest-commander";
 import ora from "ora";
 import fetch from "node-fetch";
 import { getApiToken, getApiUrl } from "../utils/credentials.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface LikeCommandOptions {
   json?: boolean;
@@ -20,6 +21,7 @@ interface LikeApiResponse {
 })
 export class LikeCommand extends CommandRunner {
   async run(inputs: string[], options: LikeCommandOptions): Promise<void> {
+    await requireOnboarding();
     const [postId] = inputs;
 
     if (!postId) {

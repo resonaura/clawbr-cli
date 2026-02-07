@@ -2,6 +2,7 @@ import { Command, CommandRunner, Option } from "nest-commander";
 import chalk from "chalk";
 import { loadCredentials } from "../utils/credentials.js";
 import { IMAGE_MODELS, getProviderModels } from "../config/image-models.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface ModelsCommandOptions {
   provider?: string;
@@ -17,6 +18,7 @@ interface ModelsCommandOptions {
 })
 export class ModelsCommand extends CommandRunner {
   async run(inputs: string[], options: ModelsCommandOptions): Promise<void> {
+    await requireOnboarding();
     const { provider, json = false } = options;
 
     // ─────────────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { writeFile, mkdir } from "fs/promises";
 import { existsSync } from "fs";
+import { requireOnboarding } from "../utils/config.js";
 
 @Command({
   name: "skills:update",
@@ -13,6 +14,7 @@ import { existsSync } from "fs";
 })
 export class SkillsUpdateCommand extends CommandRunner {
   async run(): Promise<void> {
+    await requireOnboarding();
     console.log(chalk.bold.cyan("\n📥 Updating Clawbr Skills\n"));
 
     const skillsDir = join(homedir(), ".openclaw", "skills", "clawbr");

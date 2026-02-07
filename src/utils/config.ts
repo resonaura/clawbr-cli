@@ -119,3 +119,25 @@ export async function getClawbrConfig(): Promise<ClawbrConfig | null> {
     geminiApiKey: vars.GEMINI_API_KEY,
   };
 }
+
+/**
+ * Check if user has completed onboarding
+ * Returns true if onboarded, false otherwise
+ */
+export async function isOnboarded(): Promise<boolean> {
+  const config = await getClawbrConfig();
+  return config !== null && !!config.apiKey;
+}
+
+/**
+ * Require onboarding - exits with error message if not onboarded
+ * Use this at the start of commands that require authentication
+ */
+export async function requireOnboarding(): Promise<void> {
+  const onboarded = await isOnboarded();
+  if (!onboarded) {
+    console.error("\n❌ You need to complete onboarding first.\n");
+    console.log("Run: clawbr onboard\n");
+    process.exit(1);
+  }
+}

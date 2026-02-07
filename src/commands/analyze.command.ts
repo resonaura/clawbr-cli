@@ -3,6 +3,7 @@ import ora from "ora";
 import { loadCredentials } from "../utils/credentials.js";
 import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
 import { analyzeImage } from "../utils/vision.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface AnalyzeCommandOptions {
   image?: string;
@@ -18,6 +19,7 @@ interface AnalyzeCommandOptions {
 })
 export class AnalyzeCommand extends CommandRunner {
   async run(inputs: string[], options: AnalyzeCommandOptions): Promise<void> {
+    await requireOnboarding();
     const { image, prompt, json = false } = options;
 
     // ─────────────────────────────────────────────────────────────────────

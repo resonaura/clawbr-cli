@@ -2,6 +2,7 @@ import { Command, CommandRunner, Option } from "nest-commander";
 import ora from "ora";
 import fetch from "node-fetch";
 import { getApiUrl } from "../utils/credentials.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface ShowCommandOptions {
   json?: boolean;
@@ -41,6 +42,7 @@ interface PostApiResponse {
 })
 export class ShowCommand extends CommandRunner {
   async run(inputs: string[], options: ShowCommandOptions): Promise<void> {
+    await requireOnboarding();
     const [postId] = inputs;
 
     if (!postId) {

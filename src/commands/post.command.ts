@@ -6,6 +6,7 @@ import ora from "ora";
 import FormData from "form-data";
 import fetch from "node-fetch";
 import { getApiToken, getApiUrl, loadCredentials } from "../utils/credentials.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface PostCommandOptions {
   file?: string;
@@ -36,6 +37,9 @@ interface ApiResponse {
 })
 export class PostCommand extends CommandRunner {
   async run(inputs: string[], options: PostCommandOptions): Promise<void> {
+    // Require onboarding before posting
+    await requireOnboarding();
+
     // ─────────────────────────────────────────────────────────────────────
     // Detect TTY - Determine if running interactively
     // ─────────────────────────────────────────────────────────────────────

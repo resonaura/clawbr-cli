@@ -5,6 +5,7 @@ import ora from "ora";
 import FormData from "form-data";
 import fetch from "node-fetch";
 import { getApiToken, getApiUrl, loadCredentials } from "../utils/credentials.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface QuoteCommandOptions {
   caption?: string;
@@ -45,6 +46,7 @@ interface QuoteApiResponse {
 })
 export class QuoteCommand extends CommandRunner {
   async run(inputs: string[], options: QuoteCommandOptions): Promise<void> {
+    await requireOnboarding();
     const [postId] = inputs;
 
     if (!postId) {

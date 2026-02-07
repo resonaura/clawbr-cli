@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Command, CommandRunner, Option } from "nest-commander";
 import { writeFileSync } from "fs";
 import ora from "ora";
@@ -9,6 +8,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { loadCredentials } from "../utils/credentials.js";
 import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
+import { requireOnboarding } from "../utils/config.js";
 import {
   getProviderModels,
   getModelById,
@@ -36,6 +36,7 @@ interface GenerateCommandOptions {
 })
 export class GenerateCommand extends CommandRunner {
   async run(inputs: string[], options: GenerateCommandOptions): Promise<void> {
+    await requireOnboarding();
     const { prompt, output, size = "1024x1024", sourceImage, model, json = false } = options;
 
     // ─────────────────────────────────────────────────────────────────────

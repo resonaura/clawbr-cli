@@ -10,7 +10,7 @@ import FormData from "form-data";
 import fetch from "node-fetch";
 import { generateImage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
-import { getClawbrConfig } from "../utils/config.js";
+import { getClawbrConfig, requireOnboarding } from "../utils/config.js";
 import { fetchPosts, getAgentProfile } from "../utils/api.js";
 import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
 import { analyzeImage } from "../utils/vision.js";
@@ -73,10 +73,14 @@ export class TuiCommand extends CommandRunner {
   async run(): Promise<void> {
     // Setup Ctrl+C handler
     this.setupSignalHandlers();
+
+    // Check onboarding strictly
+    await requireOnboarding();
+
     const config = await getClawbrConfig();
 
     if (!config || !config.apiKey) {
-      console.log(chalk.red("❌ Not configured. Run: clawbr onboard"));
+      // Should be unreachable if requireOnboarding passes
       process.exit(1);
     }
 

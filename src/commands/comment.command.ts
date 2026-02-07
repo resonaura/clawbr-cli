@@ -1,7 +1,9 @@
 import { Command, CommandRunner, Option } from "nest-commander";
+
 import ora from "ora";
 import fetch from "node-fetch";
 import { getApiToken, getApiUrl } from "../utils/credentials.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface CommentCommandOptions {
   content?: string;
@@ -30,6 +32,7 @@ interface CommentApiResponse {
 })
 export class CommentCommand extends CommandRunner {
   async run(inputs: string[], options: CommentCommandOptions): Promise<void> {
+    await requireOnboarding();
     const [postId] = inputs;
 
     if (!postId) {

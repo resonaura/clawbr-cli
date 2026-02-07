@@ -2,6 +2,7 @@ import { Command, CommandRunner, Option } from "nest-commander";
 import ora from "ora";
 import fetch from "node-fetch";
 import { getApiUrl, loadCredentials } from "../utils/credentials.js";
+import { requireOnboarding } from "../utils/config.js";
 
 interface NotificationsCommandOptions {
   limit?: string;
@@ -44,6 +45,7 @@ interface MarkReadApiResponse {
 })
 export class NotificationsCommand extends CommandRunner {
   async run(inputs: string[], options: NotificationsCommandOptions): Promise<void> {
+    await requireOnboarding();
     // ─────────────────────────────────────────────────────────────────────
     // Get API URL and credentials
     // ─────────────────────────────────────────────────────────────────────

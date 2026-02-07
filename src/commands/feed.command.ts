@@ -1,10 +1,13 @@
 import { Command, CommandRunner, Option } from "nest-commander";
 import ora from "ora";
 import fetch from "node-fetch";
+import { requireOnboarding } from "../utils/config.js";
 import { getApiUrl } from "../utils/credentials.js";
 
 interface FeedCommandOptions {
-  limit?: string;
+  limit?: number;
+  offset?: number;
+  agent?: string;
   cursor?: string;
   json?: boolean;
 }
@@ -56,9 +59,8 @@ interface FeedApiResponse {
 })
 export class FeedCommand extends CommandRunner {
   async run(inputs: string[], options: FeedCommandOptions): Promise<void> {
-    // ─────────────────────────────────────────────────────────────────────
-    // Get API URL from config or environment
-    // ─────────────────────────────────────────────────────────────────────
+    await requireOnboarding();
+    const limit = options.limit || 20;
     const apiUrl = getApiUrl();
 
     // ─────────────────────────────────────────────────────────────────────
@@ -67,7 +69,7 @@ export class FeedCommand extends CommandRunner {
     const params = new URLSearchParams();
 
     if (options.limit) {
-      params.append("limit", options.limit);
+      params.append("limit", limit.toString());
     }
 
     if (options.cursor) {

@@ -239,9 +239,86 @@ async function runPostFlow(_baseUrl: string): Promise<void> {
 }
 
 /**
+ * Detect OpenClaw configuration including provider and API keys
+ * Returns detected provider and API key to use as defaults
+ */
+async function detectOpenClawConfig(): Promise<{
+  provider: string | null;
+  apiKey: string | null;
+}> {
+  const openClawConfigPath = join(homedir(), ".openclaw", "openclaw.json");
+  const authProfilesPath = join(
+    homedir(),
+    ".openclaw",
+    "agents",
+    "main",
+    "agent",
+    "auth-profiles.json"
+  );
+
+  // Default return value
+  const result = { provider: null, apiKey: null };
+
+  // Check if OpenClaw is installed
+  if (!existsSync(openClawConfigPath)) {
+    return result;
+  }
+
+  try {
+    // Read openclaw.json to detect provider
+    const configContent = await readFile(openClawConfigPath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    // Detect provider from auth.profiles
+    const profiles = config.auth?.profiles || {};
+    const profileKeys = Object.keys(profiles);
+
+    if (profileKeys.length === 0) {
+      return result;
+    }
+
+    // Get the first configured provider
+    const firstProfile = profileKeys[0];
+    const detectedProvider = profiles[firstProfile]?.provider;
+
+    if (!detectedProvider) {
+      return result;
+    }
+
+    result.provider = detectedProvider;
+
+    // Now try to read the API key from auth-profiles.json
+    if (existsSync(authProfilesPath)) {
+      try {
+        const authContent = await readFile(authProfilesPath, "utf-8");
+        const authConfig = JSON.parse(authContent);
+
+        // Find the profile for the detected provider
+        const authProfiles = authConfig.profiles || {};
+        const providerProfile = Object.values(authProfiles).find(
+          (profile: any) => profile.provider === detectedProvider
+        ) as any;
+
+        if (providerProfile?.key) {
+          result.apiKey = providerProfile.key;
+        }
+      } catch {
+        // Silently fail if auth-profiles can't be read
+      }
+    }
+
+    return result;
+  } catch {
+    // Silently fail if config can't be read
+    return result;
+  }
+}
+
+/**
  * Auto-detect OpenRouter API key from OpenClaw config
  * Scenario A: Key found -> Auto-import (User sees nothing)
  * Scenario B: Key not found -> Return null
+ * @deprecated Use detectOpenClawConfig instead
  */
 async function detectOpenRouterKey(): Promise<string | null> {
   const openClawConfigPath = join(homedir(), ".openclaw", "openclaw.json");
@@ -326,16 +403,30 @@ export async function onboard(options: OnboardOptions): Promise<void> {
   }
 
   let agentName = options.username || options.name;
-  let aiProvider = options.provider || "openrouter"; // default to openrouter (recommended)
+  let aiProvider = options.provider || "";
   let providerApiKey = options.apiKey || "";
 
-  // Auto-detect OpenRouter API key from OpenClaw config
-  if (!providerApiKey && !options.apiKey) {
-    const detectedKey = await detectOpenRouterKey();
-    if (detectedKey) {
-      providerApiKey = detectedKey;
-      aiProvider = "openrouter";
-      console.log(chalk.green("✓ Auto-detected OpenRouter API key from OpenClaw config"));
+  // Auto-detect OpenClaw configuration (provider and API key)
+  let detectedConfig: { provider: string | null; apiKey: string | null } | null = null;
+  if (!providerApiKey && !options.apiKey && !options.provider) {
+    detectedConfig = await detectOpenClawConfig();
+    if (detectedConfig.provider && detectedConfig.apiKey) {
+      // Map provider names
+      const providerMap: { [key: string]: string } = {
+        openrouter: "openrouter",
+        google: "google",
+        openai: "openai",
+      };
+      const mappedProvider = providerMap[detectedConfig.provider];
+      if (mappedProvider) {
+        aiProvider = mappedProvider;
+        providerApiKey = detectedConfig.apiKey;
+        console.log(
+          chalk.green(
+            `✓ Detected OpenClaw configuration: ${chalk.bold(detectedConfig.provider)} provider`
+          )
+        );
+      }
     }
   }
 
@@ -398,7 +489,9 @@ export async function onboard(options: OnboardOptions): Promise<void> {
       {
         type: "list",
         name: "aiProvider",
-        message: "Choose your AI provider:",
+        message: aiProvider
+          ? `Confirm AI provider (detected: ${aiProvider}):`
+          : "Choose your AI provider:",
         when: !providerApiKey, // Skip if key was auto-detected
         choices: [
           {
@@ -414,23 +507,39 @@ export async function onboard(options: OnboardOptions): Promise<void> {
             value: "openai",
           },
         ],
-        default: "openrouter",
+        default: aiProvider || "openrouter",
+      },
+      {
+        type: "confirm",
+        name: "useDetectedKey",
+        message: (answers: { aiProvider: string }) => {
+          const provider = answers.aiProvider || aiProvider;
+          const maskedKey = providerApiKey
+            ? `${providerApiKey.substring(0, 8)}...${providerApiKey.substring(providerApiKey.length - 4)}`
+            : "";
+          return `Use detected ${provider} API key (${maskedKey})?`;
+        },
+        when: () => !!providerApiKey && !options.apiKey,
+        default: true,
       },
       {
         type: "password",
         name: "apiKey",
-        message: (answers: { aiProvider: string; agentName?: string; apiKey?: string }) => {
+        message: (answers: { aiProvider: string; useDetectedKey?: boolean }) => {
+          const provider = answers.aiProvider || aiProvider;
           const providerMessages = {
             google: "Enter your Google API key (get it at https://aistudio.google.com/apikey):",
             openrouter: "Enter your OpenRouter API key (get it at https://openrouter.ai/keys):",
             openai: "Enter your OpenAI API key (get it at https://platform.openai.com/api-keys):",
           };
-          return (
-            providerMessages[answers.aiProvider as keyof typeof providerMessages] ||
-            "Enter API key:"
-          );
+          return providerMessages[provider as keyof typeof providerMessages] || "Enter API key:";
         },
-        when: !providerApiKey, // Skip if key was auto-detected
+        when: (answers: { useDetectedKey?: boolean }) => {
+          // Show API key prompt only if:
+          // 1. No key was detected, OR
+          // 2. User chose not to use the detected key
+          return !providerApiKey || answers.useDetectedKey === false;
+        },
         validate: (input: string) => {
           if (!input || input.trim().length === 0) {
             return "API key is required";
@@ -441,7 +550,12 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     ]);
 
     aiProvider = answers.aiProvider || aiProvider;
-    providerApiKey = answers.apiKey || providerApiKey;
+    // If user confirmed using detected key, keep it; otherwise use the new one they entered
+    if ((answers as { useDetectedKey?: boolean }).useDetectedKey !== false && providerApiKey) {
+      // Keep the detected key
+    } else if ((answers as { apiKey?: string }).apiKey) {
+      providerApiKey = (answers as { apiKey?: string }).apiKey!;
+    }
   }
 
   if (!agentName || !providerApiKey) {
