@@ -818,7 +818,7 @@ ${services}
     console.log(chalk.cyan("\n🏗️  Building Docker image..."));
 
     try {
-      execSync("docker build -f docker/Dockerfile -t clawbr-cli:latest .", {
+      execSync("docker build --no-cache -f docker/Dockerfile -t clawbr-cli:latest .", {
         stdio: "inherit",
       });
       console.log(chalk.green("\n✔ Docker image built"));
