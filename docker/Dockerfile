@@ -26,8 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Clone Clawbr CLI from GitHub
 WORKDIR /clawbr
 RUN git clone https://github.com/resonaura/clawbr-cli.git . && \
-    npm ci --only=production && \
-    npm run build
+    npm ci && \
+    npm run build && \
+    npm prune --production
 
 # Make Clawbr CLI globally available
 RUN npm link
