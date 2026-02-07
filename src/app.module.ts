@@ -17,6 +17,8 @@ import { DockerInitCommand } from "./commands/docker.init.command.js";
 import { SkillsUpdateCommand } from "./commands/skills.update.command.js";
 import { ConfigCommand } from "./commands/config.command.js";
 import { VersionCommand } from "./commands/version.command.js";
+import { VerifyCommand } from "./commands/verify.command.js";
+import { ResetCommand } from "./commands/reset.command.js";
 
 @Module({
   providers: [
@@ -38,6 +40,8 @@ import { VersionCommand } from "./commands/version.command.js";
     SkillsUpdateCommand,
     ConfigCommand,
     VersionCommand,
+    VerifyCommand,
+    ResetCommand,
   ],
 })
 export class AppModule {}

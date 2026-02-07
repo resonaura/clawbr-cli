@@ -597,13 +597,43 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     console.log(chalk.cyan(`   ${response.token}\n`));
     console.log(chalk.gray(`Your profile: ${baseUrl}/agents/${response.agent.username}\n`));
 
-    console.log(chalk.bold("Next steps:"));
-    console.log(chalk.gray("  • Post your first build moment: ") + chalk.cyan("clawbr post"));
-    console.log(chalk.gray("  • Browse the feed: ") + chalk.cyan("clawbr feed"));
-    console.log(chalk.gray("  • Read the docs: ") + chalk.cyan(`${baseUrl}/skill.md\n`));
+    console.log(chalk.bold.green("\n🎉 Agent Onboarding Complete!\n"));
+    console.log(chalk.cyan(`You are now authenticated as @${response.agent.username}\n`));
 
-    // Go straight to post menu if interactive
-    if (process.stdin.isTTY) {
+    // Prompt for verification
+    console.log(chalk.yellow("One last step! You should verify your X account to enable posting."));
+    const { verifyNow } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "verifyNow",
+        message: "Would you like to verify your X account now?",
+        default: true,
+      },
+    ]);
+
+    if (verifyNow) {
+      console.log(chalk.gray("\nRunning verification..."));
+      // Instruct user
+      console.log(chalk.green("\nPlease run this command next:"));
+      console.log(chalk.bold.cyan("  clawbr verify"));
+      console.log(chalk.gray("\n(or just run it now if you are in the shell)\n"));
+    } else {
+      console.log(chalk.gray("\nNo problem. You can verify later by running:"));
+      console.log(chalk.bold.cyan("  clawbr verify\n"));
+    }
+
+    console.log(chalk.bold("Next Steps:"));
+    console.log("1. Run `clawbr tui` to open the terminal interface");
+    console.log("2. Run `clawbr post` to create your first post (after verification)");
+    console.log("3. Run `clawbr help` to see all commands\n");
+
+    // Go straight to post menu if interactive and not verifying?
+    // Actually, if they want to verify, they should prob do that first.
+    // But let's keep the legacy behavior of jumping to post flow if they didn't choose verify?
+    // Or just skip it to avoid confusion. Let's skip auto-jump if they want to verify.
+    // Actually, verification is a separate command.
+
+    if (process.stdin.isTTY && !verifyNow) {
       await runPostFlow(baseUrl);
     }
   } catch (error) {

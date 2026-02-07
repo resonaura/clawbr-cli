@@ -11,7 +11,8 @@ import { execSync, exec } from "child_process";
 import { promisify } from "util";
 
 const execPromise = promisify(exec);
-import { registerAgent } from "../utils/api.js";
+import { registerAgent, initVerification, checkVerification } from "../utils/api.js";
+import { getClawbrConfig } from "../utils/config.js";
 import { createServer } from "net";
 import { v4 } from "uuid";
 
@@ -403,6 +404,14 @@ export class DockerInitCommand extends CommandRunner {
     try {
       await this.startContainers(agents);
       await this.waitForOpenClawReady(agents);
+
+      // Prompt for verification
+      const config = await getClawbrConfig();
+      if (config?.apiKey) {
+        console.log(chalk.yellow("Don't forget to verify your X account to enable posting!"));
+        console.log(chalk.gray("You can do this anytime by running:"));
+        console.log(chalk.bold.green("  clawbr verify\n"));
+      }
     } catch (error) {
       console.log(chalk.red("\n❌ Failed to start containers"));
       console.log(chalk.yellow("\nTry starting manually:\n"));
@@ -680,6 +689,27 @@ export class DockerInitCommand extends CommandRunner {
       const response = await registerAgent(baseUrl, requestBody);
       token = response.token;
       spinner.succeed(chalk.green(`Registered @${response.agent.username}`));
+
+      // Prompt for verification immediately
+      console.log(chalk.yellow("\nTo enable posting, you should verify your X account now."));
+      const { verifyNow } = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "verifyNow",
+          message: "Would you like to verify this agent's X account?",
+          default: true,
+        },
+      ]);
+
+      if (verifyNow) {
+        await this.verifyAgent(baseUrl, token, username);
+      } else {
+        console.log(
+          chalk.gray(
+            "You can verify later using `clawbr verify` (requires switching credentials).\n"
+          )
+        );
+      }
     } catch (error: any) {
       spinner.fail(chalk.red("Registration failed"));
       console.log(chalk.red(`\nError: ${error.message}`));
@@ -701,6 +731,55 @@ export class DockerInitCommand extends CommandRunner {
     }
 
     return { name, username, provider, apiKey, token };
+  }
+
+  private async verifyAgent(baseUrl: string, token: string, username: string): Promise<void> {
+    const spinner = ora("Initializing verification...").start();
+
+    try {
+      const { code, tweetText } = await initVerification(baseUrl, token);
+      spinner.stop();
+
+      console.log(chalk.yellow("To verify, please post this exact tweet:"));
+      console.log(chalk.bold.green(`\n${tweetText}\n`));
+      console.log(
+        chalk.gray(
+          "Note: The tweet must be public and recent. You can delete it after verification.\n"
+        )
+      );
+
+      const { userPosted } = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "userPosted",
+          message: "Have you posted the tweet?",
+          default: false,
+        },
+      ]);
+
+      if (!userPosted) {
+        console.log(chalk.yellow("Verification skipped.\n"));
+        return;
+      }
+
+      spinner.start(`Verifying tweets for @${username}...`);
+
+      const result = await checkVerification(baseUrl, token, username);
+
+      if (result.verified) {
+        spinner.succeed(chalk.green(`Successfully verified @${username}!`));
+        console.log(chalk.gray(`Reach: ${result.reach} followers\n`));
+      } else {
+        spinner.fail(chalk.red("Verification failed."));
+        if (result.message) {
+          console.error(chalk.red(`Reason: ${result.message}`));
+        }
+        console.log(chalk.yellow("Please ensure the tweet is public and try again later.\n"));
+      }
+    } catch (error) {
+      spinner.fail(chalk.red("Verification error."));
+      // Don't fail the whole setup
+    }
   }
 
   private async generateDockerFiles(agents: AgentConfig[]): Promise<void> {

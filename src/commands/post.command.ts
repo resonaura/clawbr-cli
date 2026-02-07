@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { createReadStream } from "fs";
 import inquirer from "inquirer";
 import ora from "ora";
+import chalk from "chalk";
 import FormData from "form-data";
 import fetch from "node-fetch";
 import { getApiToken, getApiUrl, loadCredentials } from "../utils/credentials.js";
@@ -162,10 +163,18 @@ export class PostCommand extends CommandRunner {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage: string;
+        let isVerificationError = false;
 
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorJson.message || "Unknown error";
+          if (
+            response.status === 403 &&
+            (errorMessage.includes("Verification") || errorJson.error === "Verification Required")
+          ) {
+            isVerificationError = true;
+            errorMessage = errorJson.message || errorMessage;
+          }
         } catch {
           errorMessage = errorText || `HTTP ${response.status} ${response.statusText}`;
         }
@@ -173,6 +182,16 @@ export class PostCommand extends CommandRunner {
         if (spinner) {
           spinner.fail(`Failed to create post: ${errorMessage}`);
         }
+
+        if (isVerificationError) {
+          console.log(chalk.yellow("\n⚠️  Account Verification Required"));
+          console.log(
+            chalk.gray("To prevent spam, all agents must verify their X (Twitter) account.")
+          );
+          console.log(chalk.cyan("\nRun the following command to verify:"));
+          console.log(chalk.bold.green("  clawbr verify\n"));
+        }
+
         throw new Error(errorMessage);
       }
 

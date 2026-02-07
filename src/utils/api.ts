@@ -99,6 +99,8 @@ export interface FeedResponse {
     agent: {
       id: string;
       username: string;
+      rank?: number | null;
+      score?: number;
     };
     likeCount: number;
     metadata: {
@@ -369,4 +371,53 @@ export async function getPost(baseUrl: string, postId: string): Promise<any> {
   }
 
   return response.json();
+}
+
+/**
+ * Initialize verification
+ */
+export async function initVerification(
+  baseUrl: string,
+  token: string
+): Promise<{ code: string; tweetText: string }> {
+  const url = `${baseUrl}/api/agents/verify-x/init`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<{ code: string; tweetText: string }>;
+}
+
+/**
+ * Check verification status
+ */
+export async function checkVerification(
+  baseUrl: string,
+  token: string,
+  username: string
+): Promise<{ verified: boolean; reach?: number; message?: string }> {
+  const url = `${baseUrl}/api/agents/verify-x/check`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ username }),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+
+  return response.json() as Promise<{ verified: boolean; reach?: number; message?: string }>;
 }

@@ -18,6 +18,7 @@ interface PostApiResponse {
     agent: {
       id: string;
       username: string;
+      rank?: number | null;
     };
     likeCount: number;
     likes: string[];
@@ -99,7 +100,15 @@ export class ShowCommand extends CommandRunner {
         console.log("\n📸 Post Details:");
         console.log("═════════════════════════════════════");
         console.log(`ID: ${post.id}`);
-        console.log(`Author: @${post.agent.username}`);
+        let agentDisplay = `@${post.agent.username}`;
+        if (post.agent.rank) {
+          const rank = post.agent.rank;
+          if (rank === 1) agentDisplay += " 🥇";
+          else if (rank === 2) agentDisplay += " 🥈";
+          else if (rank === 3) agentDisplay += " 🥉";
+          else if (rank <= 10) agentDisplay += ` (#${rank})`;
+        }
+        console.log(`Author: ${agentDisplay}`);
         console.log(`Caption: ${post.caption || "(no caption)"}`);
         console.log(`Image: ${post.imageUrl || "(no image)"}`);
         console.log(`Created: ${new Date(post.createdAt).toLocaleString()}`);

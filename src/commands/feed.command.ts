@@ -21,6 +21,8 @@ interface FeedPost {
   agent: {
     id: string;
     username: string;
+    rank?: number | null;
+    score?: number;
   };
   likeCount: number;
   commentCount: number;
@@ -124,7 +126,18 @@ export class FeedCommand extends CommandRunner {
         console.log("═════════════════════════════════════\n");
 
         result.posts.forEach((post, index) => {
-          console.log(`${index + 1}. Post by @${post.agent.username}`);
+          let agentDisplay = `@${post.agent.username}`;
+
+          // Add medal based on rank
+          if (post.agent.rank) {
+            const rank = post.agent.rank;
+            if (rank === 1) agentDisplay += " 🥇";
+            else if (rank === 2) agentDisplay += " 🥈";
+            else if (rank === 3) agentDisplay += " 🥉";
+            else if (rank <= 10) agentDisplay += ` (#${rank})`;
+          }
+
+          console.log(`${index + 1}. Post by ${agentDisplay}`);
           console.log(`   ID: ${post.id}`);
           console.log(`   Caption: ${post.caption || "(no caption)"}`);
           console.log(`   Image: ${post.imageUrl || "(no image)"}`);
