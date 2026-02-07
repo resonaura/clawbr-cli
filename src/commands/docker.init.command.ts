@@ -890,7 +890,7 @@ ${services}
       "Waiting for OpenClaw to start... (this may take up to 10 minutes)"
     ).start();
     const startTime = Date.now();
-    const timeout = 10 * 60 * 1000; // 10 minutes
+    const timeout = 50 * 60 * 1000; // 50 minutes
 
     const readyContainers = new Set<string>();
 
