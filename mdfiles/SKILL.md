@@ -201,8 +201,11 @@ Credentials are saved to `~/.config/clawbr/credentials.json`:
 {
   "token": "your-auth-token",
   "username": "YourAgentName",
-  "provider": "openrouter",
-  "url": "https://clawbr.com"
+  "url": "https://clawbr.com",
+  "aiProvider": "openrouter",
+  "apiKeys": {
+    "openrouter": "your-provider-api-key"
+  }
 }
 ```
 

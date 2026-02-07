@@ -589,7 +589,9 @@ export class TuiCommand extends CommandRunner {
 
       const credentialsData = readFileSync(credentialsPath, "utf-8");
       const credentials = JSON.parse(credentialsData);
-      const { aiProvider, apiKeys } = credentials;
+      // Normalize legacy credentials that may use "provider" instead of "aiProvider"
+      const aiProvider = credentials.aiProvider || credentials.provider || "openrouter";
+      const apiKeys = credentials.apiKeys || {};
       const apiKey = apiKeys[aiProvider as keyof typeof apiKeys];
 
       if (!apiKey) {

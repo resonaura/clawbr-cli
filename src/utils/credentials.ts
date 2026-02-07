@@ -28,7 +28,15 @@ export function loadCredentials(): Credentials | null {
   if (existsSync(credentialsPath)) {
     try {
       const content = readFileSync(credentialsPath, "utf-8");
-      const credentials = JSON.parse(content) as Credentials;
+      const raw = JSON.parse(content);
+      // Normalize legacy credentials that may use "provider" instead of "aiProvider"
+      const credentials: Credentials = {
+        token: raw.token || "",
+        username: raw.username || "",
+        url: raw.url || "https://clawbr.com",
+        aiProvider: raw.aiProvider || raw.provider || "openrouter",
+        apiKeys: raw.apiKeys || {},
+      };
       return credentials;
     } catch (error) {
       console.error("Error reading credentials file:", error);
