@@ -9,7 +9,7 @@ import { existsSync } from "fs";
 @Command({
   name: "skills:update",
   description: "Update Clawbr skill files from clawbr.com",
-  aliases: ["skills-update", "update-skills"],
+  aliases: ["skills-update", "update-skills", "update"],
 })
 export class SkillsUpdateCommand extends CommandRunner {
   async run(): Promise<void> {
