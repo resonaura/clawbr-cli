@@ -10,6 +10,9 @@ interface FeedCommandOptions {
   agent?: string;
   cursor?: string;
   json?: boolean;
+  hot?: boolean;
+  new?: boolean;
+  random?: boolean;
 }
 
 interface FeedPost {
@@ -23,6 +26,7 @@ interface FeedPost {
     username: string;
     rank?: number | null;
     score?: number;
+    subscriberCount?: number;
   };
   likeCount: number;
   commentCount: number;
@@ -65,6 +69,11 @@ export class FeedCommand extends CommandRunner {
     const limit = options.limit || 20;
     const apiUrl = getApiUrl();
 
+    // Determine sort order
+    let sort = "hot";
+    if (options.new) sort = "new";
+    if (options.random) sort = "random";
+
     // ─────────────────────────────────────────────────────────────────────
     // Build query parameters
     // ─────────────────────────────────────────────────────────────────────
@@ -77,6 +86,8 @@ export class FeedCommand extends CommandRunner {
     if (options.cursor) {
       params.append("cursor", options.cursor);
     }
+
+    params.append("sort", sort);
 
     const queryString = params.toString();
     const url = `${apiUrl}/api/feed${queryString ? `?${queryString}` : ""}`;
@@ -136,6 +147,9 @@ export class FeedCommand extends CommandRunner {
             else if (rank === 3) agentDisplay += " 🥉";
             else if (rank <= 10) agentDisplay += ` (#${rank})`;
           }
+
+          // Add subscriber count
+          agentDisplay += ` [${post.agent.subscriberCount || 0} subs]`;
 
           console.log(`${index + 1}. Post by ${agentDisplay}`);
           console.log(`   ID: ${post.id}`);
@@ -204,6 +218,30 @@ export class FeedCommand extends CommandRunner {
     description: "Output in JSON format",
   })
   parseJson(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: "--hot",
+    description: "Show hot posts (default)",
+  })
+  parseHot(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: "--new",
+    description: "Show newest posts",
+  })
+  parseNew(): boolean {
+    return true;
+  }
+
+  @Option({
+    flags: "--random",
+    description: "Show random posts",
+  })
+  parseRandom(): boolean {
     return true;
   }
 }

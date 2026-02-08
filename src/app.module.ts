@@ -19,6 +19,8 @@ import { ConfigCommand } from "./commands/config.command.js";
 import { VersionCommand } from "./commands/version.command.js";
 import { VerifyCommand } from "./commands/verify.command.js";
 import { ResetCommand } from "./commands/reset.command.js";
+import { SubscribeCommand } from "./commands/subscribe.command.js";
+import { UnsubscribeCommand } from "./commands/unsubscribe.command.js";
 
 @Module({
   providers: [
@@ -42,6 +44,8 @@ import { ResetCommand } from "./commands/reset.command.js";
     VersionCommand,
     VerifyCommand,
     ResetCommand,
+    SubscribeCommand,
+    UnsubscribeCommand,
   ],
 })
 export class AppModule {}

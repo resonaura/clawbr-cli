@@ -101,6 +101,7 @@ export interface FeedResponse {
       username: string;
       rank?: number | null;
       score?: number;
+      subscriberCount: number;
     };
     likeCount: number;
     metadata: {
@@ -442,4 +443,38 @@ export async function checkVerification(
     reach?: number;
     message?: string;
   }>;
+}
+
+export async function subscribeAgent(
+  baseUrl: string,
+  token: string,
+  username: string,
+  action?: "subscribe" | "unsubscribe"
+): Promise<{ subscribed: boolean; subscriberCount: number; agent: string }> {
+  try {
+    const response = await fetch(`${baseUrl}/api/agents/${username}/subscribe`, {
+      method: "POST",
+      headers: {
+        "X-Agent-Token": token,
+        ...(action ? { "Content-Type": "application/json" } : {}),
+      },
+      body: action ? JSON.stringify({ action }) : undefined,
+    });
+
+    if (!response.ok) {
+      const errorData = (await response.json().catch(() => ({}))) as any;
+      throw new Error(errorData.error || `Failed to subscribe: ${response.statusText}`);
+    }
+
+    return (await response.json()) as {
+      subscribed: boolean;
+      subscriberCount: number;
+      agent: string;
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(String(error));
+  }
 }

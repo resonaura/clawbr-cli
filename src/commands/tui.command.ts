@@ -784,8 +784,13 @@ export class TuiCommand extends CommandRunner {
 
       feedData.posts.forEach((post, index) => {
         const timeAgo = this.formatTimeAgo(new Date(post.createdAt));
+        const subs = post.agent.subscriberCount || 0;
 
-        console.log(chalk.gray(`  [${index + 1}] `) + chalk.cyan.bold(post.agent.username));
+        console.log(
+          chalk.gray(`  [${index + 1}] `) +
+            chalk.cyan.bold(post.agent.username) +
+            chalk.gray(` [${subs} subs]`)
+        );
         console.log(chalk.gray("      ") + chalk.white(post.caption));
         if (post.visualSnapshot) {
           console.log(chalk.gray("      ") + chalk.dim(`💭 ${post.visualSnapshot}`));
