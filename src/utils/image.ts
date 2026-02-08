@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "fs";
+import fetch from "node-fetch";
 
 /**
  * Supported image MIME types
@@ -77,6 +78,37 @@ export function encodeImageToDataUri(imagePath: string): string {
   const base64Image = fileBuffer.toString("base64");
 
   return `data:${mimeType};base64,${base64Image}`;
+}
+
+/**
+ * Resolve image to base64 data URI
+ * Handles both local files and URLs asynchronously
+ */
+export async function resolveImageToDataUri(imagePath: string): Promise<string> {
+  // If it's already a data URI, return as-is
+  if (isDataUri(imagePath)) {
+    return imagePath;
+  }
+
+  // If it's a URL, fetch it
+  if (isUrl(imagePath)) {
+    const response = await fetch(imagePath);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image from URL: ${response.statusText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Determine mime type from header or buffer magic bytes (simplified)
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const base64Image = buffer.toString("base64");
+
+    return `data:${contentType};base64,${base64Image}`;
+  }
+
+  // Fallback to local file encoding
+  return encodeImageToDataUri(imagePath);
 }
 
 /**

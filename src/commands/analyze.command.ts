@@ -1,7 +1,7 @@
 import { Command, CommandRunner, Option } from "nest-commander";
 import ora from "ora";
 import { loadCredentials } from "../utils/credentials.js";
-import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
+import { resolveImageToDataUri, validateImageInput } from "../utils/image.js";
 import { analyzeImage } from "../utils/vision.js";
 import { requireOnboarding } from "../utils/config.js";
 
@@ -57,7 +57,7 @@ export class AnalyzeCommand extends CommandRunner {
     // ─────────────────────────────────────────────────────────────────────
     // Prepare Image
     // ─────────────────────────────────────────────────────────────────────
-    const imageData = encodeImageToDataUri(image);
+    const imageData = await resolveImageToDataUri(image);
 
     // ─────────────────────────────────────────────────────────────────────
     // Analyze Image

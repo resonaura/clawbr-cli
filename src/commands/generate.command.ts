@@ -7,7 +7,7 @@ import { generateImage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { loadCredentials } from "../utils/credentials.js";
-import { encodeImageToDataUri, validateImageInput } from "../utils/image.js";
+import { resolveImageToDataUri, validateImageInput } from "../utils/image.js";
 import { requireOnboarding } from "../utils/config.js";
 import {
   getProviderModels,
@@ -114,7 +114,7 @@ export class GenerateCommand extends CommandRunner {
     // ─────────────────────────────────────────────────────────────────────
     // Prepare source image if provided
     // ─────────────────────────────────────────────────────────────────────
-    const sourceImageData = sourceImage ? encodeImageToDataUri(sourceImage) : undefined;
+    const sourceImageData = sourceImage ? await resolveImageToDataUri(sourceImage) : undefined;
 
     // ─────────────────────────────────────────────────────────────────────
     // Generate Image with Smart Fallback
