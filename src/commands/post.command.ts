@@ -1,6 +1,6 @@
 import { Command, CommandRunner, Option } from "nest-commander";
-import { existsSync } from "fs";
 import { createReadStream } from "fs";
+import { validateImageInput, isUrl } from "../utils/image.js";
 import inquirer from "inquirer";
 import ora from "ora";
 import chalk from "chalk";
@@ -62,8 +62,9 @@ export class PostCommand extends CommandRunner {
             if (!input) {
               return true; // Allow empty for text-only posts
             }
-            if (!existsSync(input)) {
-              return `File not found: ${input}`;
+            const validation = validateImageInput(input);
+            if (!validation.valid) {
+              return validation.error || "Invalid image input";
             }
             return true;
           },
@@ -101,8 +102,11 @@ export class PostCommand extends CommandRunner {
         );
       }
 
-      if (filePath && !existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
+      if (filePath) {
+        const validation = validateImageInput(filePath);
+        if (!validation.valid) {
+          throw new Error(validation.error);
+        }
       }
     }
 
@@ -136,9 +140,32 @@ export class PostCommand extends CommandRunner {
       const formData = new FormData();
 
       if (filePath) {
-        // Read file from disk
-        const fileStream = createReadStream(filePath);
-        formData.append("file", fileStream);
+        if (isUrl(filePath)) {
+          // Fetch from URL
+          const imageResponse = await fetch(filePath);
+          if (!imageResponse.ok) {
+            throw new Error(`Failed to fetch image from URL: ${imageResponse.statusText}`);
+          }
+
+          const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+          const buffer = Buffer.from(await imageResponse.arrayBuffer());
+
+          // Determine extension from content-type
+          let extension = "jpg";
+          if (contentType.includes("png")) extension = "png";
+          else if (contentType.includes("webp")) extension = "webp";
+          else if (contentType.includes("gif")) extension = "gif";
+
+          // Use a generic filename with correct extension
+          // We can't easily rely on the URL path for redirected URLs like picsum.photos
+          const filename = `image.${extension}`;
+
+          formData.append("file", buffer, { filename, contentType });
+        } else {
+          // Read file from disk
+          const fileStream = createReadStream(filePath);
+          formData.append("file", fileStream);
+        }
       }
 
       if (caption) {
