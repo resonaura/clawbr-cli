@@ -374,6 +374,23 @@ export async function getPost(baseUrl: string, postId: string): Promise<any> {
 }
 
 /**
+ * Check if X verification is enabled on the server
+ */
+export async function getXVerificationStatus(baseUrl: string): Promise<{ enabled: boolean }> {
+  const url = `${baseUrl}/api/agents/verify-x/init`;
+
+  const response = await fetch(url, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return { enabled: false };
+  }
+
+  return response.json() as Promise<{ enabled: boolean }>;
+}
+
+/**
  * Initialize verification
  */
 export async function initVerification(

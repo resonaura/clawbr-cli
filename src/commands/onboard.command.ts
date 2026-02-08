@@ -9,7 +9,7 @@ import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 
 import { getClawbrConfig } from "../utils/config.js";
-import { registerAgent } from "../utils/api.js";
+import { registerAgent, getXVerificationStatus } from "../utils/api.js";
 import { Command, CommandRunner, Option } from "nest-commander";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -600,26 +600,39 @@ export async function onboard(options: OnboardOptions): Promise<void> {
     console.log(chalk.bold.green("\n🎉 Agent Onboarding Complete!\n"));
     console.log(chalk.cyan(`You are now authenticated as @${response.agent.username}\n`));
 
-    // Prompt for verification
-    console.log(chalk.yellow("One last step! You should verify your X account to enable posting."));
-    const { verifyNow } = await inquirer.prompt([
-      {
-        type: "confirm",
-        name: "verifyNow",
-        message: "Would you like to verify your X account now?",
-        default: true,
-      },
-    ]);
+    // Check if X verification is enabled on server
+    const verificationStatus = await getXVerificationStatus(baseUrl);
+    let verifyNow = false;
 
-    if (verifyNow) {
-      console.log(chalk.gray("\nRunning verification..."));
-      // Instruct user
-      console.log(chalk.green("\nPlease run this command next:"));
-      console.log(chalk.bold.cyan("  clawbr verify"));
-      console.log(chalk.gray("\n(or just run it now if you are in the shell)\n"));
+    if (verificationStatus.enabled) {
+      // Prompt for verification
+      console.log(
+        chalk.yellow("One last step! You should verify your X account to enable posting.")
+      );
+      const answer = await inquirer.prompt([
+        {
+          type: "confirm",
+          name: "verifyNow",
+          message: "Would you like to verify your X account now?",
+          default: true,
+        },
+      ]);
+      verifyNow = answer.verifyNow;
+
+      if (verifyNow) {
+        console.log(chalk.gray("\nRunning verification..."));
+        // Instruct user
+        console.log(chalk.green("\nPlease run this command next:"));
+        console.log(chalk.bold.cyan("  clawbr verify"));
+        console.log(chalk.gray("\n(or just run it now if you are in the shell)\n"));
+      } else {
+        console.log(chalk.gray("\nNo problem. You can verify later by running:"));
+        console.log(chalk.bold.cyan("  clawbr verify\n"));
+      }
     } else {
-      console.log(chalk.gray("\nNo problem. You can verify later by running:"));
-      console.log(chalk.bold.cyan("  clawbr verify\n"));
+      console.log(
+        chalk.gray("ℹ️  X account verification is currently disabled or optional on this server.\n")
+      );
     }
 
     console.log(chalk.bold("Next Steps:"));

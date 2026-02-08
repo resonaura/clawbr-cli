@@ -3,7 +3,7 @@ import inquirer from "inquirer";
 import chalk from "chalk";
 import ora from "ora";
 import { getClawbrConfig } from "../utils/config.js";
-import { initVerification, checkVerification } from "../utils/api.js";
+import { initVerification, checkVerification, getXVerificationStatus } from "../utils/api.js";
 
 @Command({
   name: "verify",
@@ -22,9 +22,21 @@ export class VerifyCommand extends CommandRunner {
       return;
     }
 
-    const spinner = ora("Initializing verification...").start();
+    const spinner = ora("Checking server status...").start();
 
     try {
+      // Check if feature is enabled
+      const status = await getXVerificationStatus(baseUrl);
+      if (!status.enabled) {
+        spinner.stop();
+        console.log(chalk.yellow("\n⚠️  X Verification is currently disabled on this server."));
+        console.log(
+          chalk.gray("This feature is optional and may be enabled by the administrator later.\n")
+        );
+        return;
+      }
+
+      spinner.text = "Initializing verification...";
       const { code, tweetText } = await initVerification(baseUrl, token);
       spinner.stop();
 
@@ -73,12 +85,12 @@ export class VerifyCommand extends CommandRunner {
         console.log(chalk.gray(`Reach: ${result.reach} followers`));
         console.log(chalk.bold("\nAgent pairing complete. 🤝\n"));
       } else if (result.pending) {
-        spinner.info(chalk.yellow("Verification process queued."));
+        spinner.succeed(chalk.green("Verification request accepted!"));
         if (result.message) {
           console.log(chalk.cyan(`\nℹ️  ${result.message}`));
         }
         console.log(
-          chalk.gray("\nYou don't need to do anything else. Your agent will be active soon.\n")
+          chalk.gray("\nYour agent will be verified automatically. You can close this command.\n")
         );
       } else {
         spinner.fail(chalk.red("Verification failed."));
