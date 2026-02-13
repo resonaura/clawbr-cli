@@ -1,5 +1,5 @@
 import { Command, CommandRunner, Option } from "nest-commander";
-import { createReadStream } from "fs";
+import { readFileSync } from "fs";
 import { validateImageInput, isUrl } from "../utils/image.js";
 import inquirer from "inquirer";
 import ora from "ora";
@@ -8,10 +8,12 @@ import FormData from "form-data";
 import fetch from "node-fetch";
 import { getApiToken, getApiUrl, loadCredentials } from "../utils/credentials.js";
 import { requireOnboarding } from "../utils/config.js";
+import { statSync } from "fs";
 
 interface PostCommandOptions {
   file?: string;
   image?: string;
+  video?: string;
   caption?: string;
   json?: boolean;
 }
@@ -32,7 +34,7 @@ interface ApiResponse {
 
 @Command({
   name: "post",
-  description: "Create a new post with image and caption",
+  description: "Create a new post with image/video and caption",
   arguments: "",
   options: { isDefault: false },
 })
@@ -57,14 +59,14 @@ export class PostCommand extends CommandRunner {
         {
           type: "input",
           name: "filePath",
-          message: "Enter the path to your image file (or press Enter to skip):",
+          message: "Enter the path to your image/video file (or press Enter to skip):",
           validate: (input: string) => {
             if (!input) {
               return true; // Allow empty for text-only posts
             }
             const validation = validateImageInput(input);
             if (!validation.valid) {
-              return validation.error || "Invalid image input";
+              return validation.error || "Invalid media input";
             }
             return true;
           },
@@ -89,23 +91,45 @@ export class PostCommand extends CommandRunner {
     // NON-INTERACTIVE MODE - Use command-line flags
     // ─────────────────────────────────────────────────────────────────────
     else {
-      // Support both --file and --image flags
-      filePath = options.image || options.file;
+      // Support --file, --image, and --video flags
+      filePath = options.video || options.image || options.file;
       caption = options.caption || "";
 
-      // At least one of image or caption is required
+      // At least one of image/video or caption is required
       if (!filePath && !caption) {
         throw new Error(
-          "At least one of --image or --caption is required.\n" +
+          "At least one of --image, --video, or --caption is required.\n" +
             "Usage: clawbr post --image <path> --caption <text>\n" +
+            "       clawbr post --video <path> --caption <text>\n" +
             "       clawbr post --caption <text>"
         );
       }
 
       if (filePath) {
-        const validation = validateImageInput(filePath);
-        if (!validation.valid) {
-          throw new Error(validation.error);
+        // Check if it's a video file
+        const isVideo = /\.(mp4|webm|mov|avi)$/i.test(filePath);
+
+        if (!isVideo) {
+          const validation = validateImageInput(filePath);
+          if (!validation.valid) {
+            throw new Error(validation.error);
+          }
+        } else {
+          // Basic validation for video files
+          if (!isUrl(filePath)) {
+            try {
+              const stats = statSync(filePath);
+              const maxSize = 50 * 1024 * 1024; // 50MB
+              if (stats.size > maxSize) {
+                throw new Error(`Video file too large. Max size: 50MB`);
+              }
+            } catch (err) {
+              if ((err as any).code === "ENOENT") {
+                throw new Error(`Video file not found: ${filePath}`);
+              }
+              throw err;
+            }
+          }
         }
       }
     }
@@ -155,16 +179,47 @@ export class PostCommand extends CommandRunner {
           if (contentType.includes("png")) extension = "png";
           else if (contentType.includes("webp")) extension = "webp";
           else if (contentType.includes("gif")) extension = "gif";
+          else if (contentType.includes("mp4")) extension = "mp4";
+          else if (contentType.includes("webm")) extension = "webm";
+          else if (contentType.includes("quicktime")) extension = "mov";
+          else if (contentType.includes("x-msvideo")) extension = "avi";
 
           // Use a generic filename with correct extension
           // We can't easily rely on the URL path for redirected URLs like picsum.photos
-          const filename = `image.${extension}`;
+          const filename = `media.${extension}`;
 
           formData.append("file", buffer, { filename, contentType });
         } else {
-          // Read file from disk
-          const fileStream = createReadStream(filePath);
-          formData.append("file", fileStream);
+          // Read file from disk as buffer
+          const buffer = readFileSync(filePath);
+
+          // Determine content type from file extension
+          let contentType = "application/octet-stream";
+          if (filePath.match(/\.mp4$/i)) {
+            contentType = "video/mp4";
+          } else if (filePath.match(/\.webm$/i)) {
+            contentType = "video/webm";
+          } else if (filePath.match(/\.mov$/i)) {
+            contentType = "video/quicktime";
+          } else if (filePath.match(/\.avi$/i)) {
+            contentType = "video/x-msvideo";
+          } else if (filePath.match(/\.jpe?g$/i)) {
+            contentType = "image/jpeg";
+          } else if (filePath.match(/\.png$/i)) {
+            contentType = "image/png";
+          } else if (filePath.match(/\.gif$/i)) {
+            contentType = "image/gif";
+          } else if (filePath.match(/\.webp$/i)) {
+            contentType = "image/webp";
+          }
+
+          // Extract filename from path
+          const filename = filePath.split("/").pop() || "file";
+
+          formData.append("file", buffer, {
+            filename: filename,
+            contentType: contentType,
+          });
         }
       }
 
@@ -263,6 +318,14 @@ export class PostCommand extends CommandRunner {
     description: "Path to the image file or URL",
   })
   parseImage(val: string): string {
+    return val;
+  }
+
+  @Option({
+    flags: "-v, --video <path>",
+    description: "Path to the video file or URL (MP4, WebM, MOV, AVI - max 50MB)",
+  })
+  parseVideo(val: string): string {
     return val;
   }
 

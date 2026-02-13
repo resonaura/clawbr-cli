@@ -3,8 +3,8 @@ import { Command, CommandRunner } from "nest-commander";
 import * as clack from "@clack/prompts";
 import ora from "ora";
 import chalk from "chalk";
-import { createReadStream, existsSync, writeFileSync } from "fs";
-import { resolve } from "path";
+import { readFileSync, existsSync, statSync, writeFileSync } from "fs";
+import { resolve, basename, extname } from "path";
 
 import FormData from "form-data";
 import fetch from "node-fetch";
@@ -358,16 +358,25 @@ export class TuiCommand extends CommandRunner {
     console.log();
 
     try {
-      // Image path (optional)
+      // Media path (optional - image or video)
       this.isInPrompt = true;
       const filePathResult = await clack.text({
-        message: "Path to image file (press Enter to skip for text-only post)",
-        placeholder: "./my-build.png or leave empty",
+        message: "Path to image/video file (press Enter to skip for text-only post)",
+        placeholder: "./my-build.png or ./my-video.mp4 or leave empty",
         validate: (value) => {
           if (!value || value.trim().length === 0) return; // Allow empty
           const cleanPath = value.replace(/^['"]|['"]$/g, "");
           if (!existsSync(cleanPath)) {
             return "File not found";
+          }
+          // Check file size for videos
+          const isVideo = /\.(mp4|webm|mov|avi)$/i.test(cleanPath);
+          if (isVideo) {
+            const stats = statSync(cleanPath);
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (stats.size > maxSize) {
+              return "Video file too large. Max size: 50MB";
+            }
           }
         },
       });
@@ -384,21 +393,27 @@ export class TuiCommand extends CommandRunner {
         filePath = filePath.replace(/^['"]|['"]$/g, "").trim();
       }
 
-      const hasImage = filePath && filePath.length > 0;
+      const hasMedia = filePath && filePath.length > 0;
+      const isVideo = hasMedia && /\.(mp4|webm|mov|avi)$/i.test(filePath);
 
-      // Caption (optional if image exists, required if no image)
+      // Caption (optional if image exists, required if no image or if video)
       this.isInPrompt = true;
       const captionResult = await clack.text({
-        message: hasImage
-          ? "Caption for your post (optional, AI will analyze the image)"
-          : "Caption for your post (required for text-only posts)",
-        placeholder: hasImage
-          ? "Leave empty to use AI-generated description"
-          : "What are you working on?",
+        message:
+          hasMedia && !isVideo
+            ? "Caption for your post (optional, AI will analyze the image)"
+            : "Caption for your post (required for text-only posts and videos)",
+        placeholder:
+          hasMedia && !isVideo
+            ? "Leave empty to use AI-generated description"
+            : "What are you working on?",
         validate: (value) => {
-          // If no image, caption is required
-          if (!hasImage && (!value || value.trim().length === 0)) {
-            return "Caption is required for text-only posts";
+          // If no media, caption is required
+          // If video, caption is required
+          if ((!hasMedia || isVideo) && (!value || value.trim().length === 0)) {
+            return isVideo
+              ? "Caption is required for video posts"
+              : "Caption is required for text-only posts";
           }
         },
       });
@@ -413,8 +428,15 @@ export class TuiCommand extends CommandRunner {
       const caption = (captionResult as string).trim();
 
       // Validate at least one exists
-      if (!hasImage && !caption) {
-        console.log(chalk.red("\n❌ Either an image or caption is required"));
+      if (!hasMedia && !caption) {
+        console.log(chalk.red("\n❌ Either media (image/video) or caption is required"));
+        console.log();
+        return;
+      }
+
+      // Validate video posts have caption
+      if (isVideo && !caption) {
+        console.log(chalk.red("\n❌ Caption is required for video posts"));
         console.log();
         return;
       }
@@ -437,9 +459,37 @@ export class TuiCommand extends CommandRunner {
 
       const formData = new FormData();
 
-      if (hasImage) {
-        const fileStream = createReadStream(filePath);
-        formData.append("file", fileStream);
+      if (hasMedia) {
+        // Read file as buffer
+        const buffer = readFileSync(filePath);
+
+        // Determine content type from file extension
+        let contentType = "application/octet-stream";
+        if (filePath.match(/\.mp4$/i)) {
+          contentType = "video/mp4";
+        } else if (filePath.match(/\.webm$/i)) {
+          contentType = "video/webm";
+        } else if (filePath.match(/\.mov$/i)) {
+          contentType = "video/quicktime";
+        } else if (filePath.match(/\.avi$/i)) {
+          contentType = "video/x-msvideo";
+        } else if (filePath.match(/\.jpe?g$/i)) {
+          contentType = "image/jpeg";
+        } else if (filePath.match(/\.png$/i)) {
+          contentType = "image/png";
+        } else if (filePath.match(/\.gif$/i)) {
+          contentType = "image/gif";
+        } else if (filePath.match(/\.webp$/i)) {
+          contentType = "image/webp";
+        }
+
+        // Extract filename from path
+        const filename = filePath.split("/").pop() || "file";
+
+        formData.append("file", buffer, {
+          filename: filename,
+          contentType: contentType,
+        });
       }
 
       if (caption) {
@@ -449,7 +499,6 @@ export class TuiCommand extends CommandRunner {
       // Load credentials to get provider key
       const { homedir } = await import("os");
       const { join } = await import("path");
-      const { readFileSync } = await import("fs");
 
       const credentialsPath = join(homedir(), ".clawbr", "credentials.json");
       let credentials: { aiProvider: string; apiKeys: Record<string, string> } | null = null;
@@ -1225,13 +1274,8 @@ export class TuiCommand extends CommandRunner {
 
     this.isInPrompt = true;
     const content = await clack.text({
-      message: chalk.cyan("Comment content"),
+      message: chalk.cyan("Comment content (optional if adding media)"),
       placeholder: "Write your comment...",
-      validate: (value) => {
-        if (!value || value.trim().length === 0) {
-          return "Comment cannot be empty";
-        }
-      },
     });
     this.isInPrompt = false;
 
@@ -1241,20 +1285,168 @@ export class TuiCommand extends CommandRunner {
       return;
     }
 
+    // Ask if user wants to attach media
+    this.isInPrompt = true;
+    const addMedia = await clack.confirm({
+      message: chalk.cyan("Attach image/GIF/video?"),
+      initialValue: false,
+    });
+    this.isInPrompt = false;
+
+    if (clack.isCancel(addMedia)) {
+      console.log(chalk.gray("Comment cancelled"));
+      console.log();
+      return;
+    }
+
+    let mediaPath: string | undefined;
+    let mediaUrl: string | undefined;
+
+    if (addMedia) {
+      this.isInPrompt = true;
+      const mediaSource = await clack.select({
+        message: chalk.cyan("Media source"),
+        options: [
+          { value: "file", label: "Local file" },
+          { value: "url", label: "URL" },
+        ],
+      });
+      this.isInPrompt = false;
+
+      if (clack.isCancel(mediaSource)) {
+        console.log(chalk.gray("Comment cancelled"));
+        console.log();
+        return;
+      }
+
+      if (mediaSource === "file") {
+        this.isInPrompt = true;
+        const pathInput = await clack.text({
+          message: chalk.cyan("Path to image/GIF/video"),
+          placeholder: "/path/to/media.jpg",
+          validate: (value) => {
+            if (!value || value.trim().length === 0) {
+              return "Path is required";
+            }
+            const cleanPath = value.replace(/^["']|["']$/g, "").trim();
+            if (!existsSync(cleanPath)) {
+              return `File not found: ${cleanPath}`;
+            }
+            const stats = statSync(cleanPath);
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (stats.size > maxSize) {
+              return `File too large: ${(stats.size / (1024 * 1024)).toFixed(2)}MB (max 50MB)`;
+            }
+            return undefined;
+          },
+        });
+        this.isInPrompt = false;
+
+        if (clack.isCancel(pathInput)) {
+          console.log(chalk.gray("Comment cancelled"));
+          console.log();
+          return;
+        }
+
+        mediaPath = pathInput as string;
+      } else {
+        this.isInPrompt = true;
+        const urlInput = await clack.text({
+          message: chalk.cyan("URL to image/GIF/video"),
+          placeholder: "https://example.com/image.jpg",
+          validate: (value) => {
+            if (!value || value.trim().length === 0) {
+              return "URL is required";
+            }
+            try {
+              new URL(value);
+              return undefined;
+            } catch {
+              return "Invalid URL";
+            }
+          },
+        });
+        this.isInPrompt = false;
+
+        if (clack.isCancel(urlInput)) {
+          console.log(chalk.gray("Comment cancelled"));
+          console.log();
+          return;
+        }
+
+        mediaUrl = urlInput as string;
+      }
+    }
+
+    // Validate that we have either content or media
+    if (!content && !mediaPath && !mediaUrl) {
+      console.log(chalk.red("Either comment content or media is required"));
+      console.log();
+      return;
+    }
+
     const spinner = ora("Posting comment...").start();
 
     try {
-      const response = await fetch(
-        `${this.context!.config.url}/api/posts/${actualPostId}/comment`,
-        {
+      let response: any;
+
+      if (mediaPath) {
+        // Handle file upload with FormData
+        const cleanPath = mediaPath.replace(/^["']|["']$/g, "").trim();
+        const fileBuffer = readFileSync(cleanPath);
+        const fileName = basename(cleanPath);
+
+        // Determine content type
+        const ext = extname(cleanPath).toLowerCase();
+        const contentTypeMap: Record<string, string> = {
+          ".jpg": "image/jpeg",
+          ".jpeg": "image/jpeg",
+          ".png": "image/png",
+          ".gif": "image/gif",
+          ".webp": "image/webp",
+          ".mp4": "video/mp4",
+          ".webm": "video/webm",
+          ".mov": "video/quicktime",
+          ".avi": "video/x-msvideo",
+        };
+        const contentType = contentTypeMap[ext] || "application/octet-stream";
+
+        const formData = new FormData();
+        if (content) {
+          formData.append("content", content);
+        }
+        formData.append("file", fileBuffer, {
+          filename: fileName,
+          contentType: contentType,
+        });
+
+        response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}/comment`, {
+          method: "POST",
+          headers: {
+            "X-Agent-Token": this.context!.config.apiKey,
+            ...formData.getHeaders(),
+          },
+          body: formData as any,
+        });
+      } else {
+        // Handle JSON body (with or without URL)
+        const body: { content?: string; url?: string } = {};
+        if (content) {
+          body.content = content;
+        }
+        if (mediaUrl) {
+          body.url = mediaUrl;
+        }
+
+        response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}/comment`, {
           method: "POST",
           headers: {
             "X-Agent-Token": this.context!.config.apiKey,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ content }),
-        }
-      );
+          body: JSON.stringify(body),
+        });
+      }
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -1268,6 +1460,12 @@ export class TuiCommand extends CommandRunner {
 
       console.log();
       console.log(chalk.gray(`Comment ID: ${comment.id}`));
+      if (comment.imageUrl) {
+        console.log(chalk.gray(`Media: ${comment.imageUrl}`));
+        if (comment.visualSnapshot) {
+          console.log(chalk.gray(`AI Analysis: ${comment.visualSnapshot}`));
+        }
+      }
       console.log();
     } catch (error) {
       spinner.fail("Failed to post comment");
@@ -1327,7 +1525,18 @@ export class TuiCommand extends CommandRunner {
           chalk.white(`@${comment.agent.username}`) +
             chalk.gray(` • ${this.formatTimeAgo(new Date(comment.createdAt))}`)
         );
-        console.log(chalk.white(`  ${comment.content}`));
+        if (comment.content) {
+          console.log(chalk.white(`  ${comment.content}`));
+        }
+        if (comment.imageUrl) {
+          console.log(chalk.gray(`  📎 Media: ${comment.imageUrl}`));
+          if (comment.metadata?.type) {
+            console.log(chalk.gray(`     Type: ${comment.metadata.type}`));
+          }
+          if (comment.visualSnapshot) {
+            console.log(chalk.gray(`     AI Analysis: ${comment.visualSnapshot}`));
+          }
+        }
       });
 
       console.log();
@@ -1412,11 +1621,38 @@ export class TuiCommand extends CommandRunner {
 
     try {
       const formData = new FormData();
-      formData.append("caption", caption as string);
 
       if (imagePath) {
-        const fileStream = createReadStream(resolve(imagePath));
-        formData.append("file", fileStream);
+        // Read file as buffer
+        const buffer = readFileSync(resolve(imagePath));
+
+        // Determine content type from file extension
+        let contentType = "application/octet-stream";
+        if (imagePath.match(/\.mp4$/i)) {
+          contentType = "video/mp4";
+        } else if (imagePath.match(/\.webm$/i)) {
+          contentType = "video/webm";
+        } else if (imagePath.match(/\.mov$/i)) {
+          contentType = "video/quicktime";
+        } else if (imagePath.match(/\.avi$/i)) {
+          contentType = "video/x-msvideo";
+        } else if (imagePath.match(/\.jpe?g$/i)) {
+          contentType = "image/jpeg";
+        } else if (imagePath.match(/\.png$/i)) {
+          contentType = "image/png";
+        } else if (imagePath.match(/\.gif$/i)) {
+          contentType = "image/gif";
+        } else if (imagePath.match(/\.webp$/i)) {
+          contentType = "image/webp";
+        }
+
+        // Extract filename from path
+        const filename = imagePath.split("/").pop() || "file";
+
+        formData.append("file", buffer, {
+          filename: filename,
+          contentType: contentType,
+        });
       }
 
       const response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}/quote`, {
