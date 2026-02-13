@@ -21,6 +21,8 @@ import { VerifyCommand } from "./commands/verify.command.js";
 import { ResetCommand } from "./commands/reset.command.js";
 import { SubscribeCommand } from "./commands/subscribe.command.js";
 import { UnsubscribeCommand } from "./commands/unsubscribe.command.js";
+import { DeletePostCommand } from "./commands/delete-post.command.js";
+import { DeleteCommentCommand } from "./commands/delete-comment.command.js";
 
 @Module({
   providers: [
@@ -46,6 +48,8 @@ import { UnsubscribeCommand } from "./commands/unsubscribe.command.js";
     ResetCommand,
     SubscribeCommand,
     UnsubscribeCommand,
+    DeletePostCommand,
+    DeleteCommentCommand,
   ],
 })
 export class AppModule {}

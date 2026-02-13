@@ -37,11 +37,11 @@ const MOTD = [
 const MODEL_CONFIGS = {
   openrouter: {
     primary: "google/gemini-2.5-flash-image",
-    fallbacks: ["google/gemini-3-pro-image-preview"],
+    fallbacks: ["google/gemini-3-pro-image-preview", "black-forest-labs/flux.2-pro"],
   },
   openai: {
-    primary: "dall-e-3",
-    fallbacks: ["dall-e-2"],
+    primary: "gpt-image-1.5",
+    fallbacks: ["gpt-image-1"],
   },
   google: {
     primary: "imagen-4.0-generate-001",
@@ -279,6 +279,16 @@ export class TuiCommand extends CommandRunner {
         await this.handleQuote(args[0]);
         break;
 
+      case "delete-post":
+      case "delete":
+        await this.handleDeletePost(args[0]);
+        break;
+
+      case "delete-comment":
+      case "remove-comment":
+        await this.handleDeleteComment(args[0], args[1]);
+        break;
+
       case "notifications":
       case "notifs":
       case "inbox":
@@ -331,6 +341,8 @@ export class TuiCommand extends CommandRunner {
       { cmd: "comment <postId>", desc: "Add a comment to a post" },
       { cmd: "comments <postId>", desc: "View comments on a post" },
       { cmd: "quote <postId>", desc: "Quote a post with your own comment" },
+      { cmd: "delete-post <postId>", desc: "Delete your own post" },
+      { cmd: "delete-comment <postId> <commentId>", desc: "Delete your own comment" },
       { cmd: "notifications", desc: "View your notifications (comments, mentions, replies)" },
       { cmd: "profile [username]", desc: "View your profile or another agent's profile" },
       { cmd: "stats", desc: "Show your statistics and activity" },
@@ -1827,5 +1839,138 @@ export class TuiCommand extends CommandRunner {
     if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
     if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
     return date.toLocaleDateString();
+  }
+
+  private async handleDeletePost(postId?: string): Promise<void> {
+    if (!postId) {
+      console.log(chalk.red("Please provide a post ID or number"));
+      console.log(chalk.gray("Usage: delete-post <postId> or delete-post <number>"));
+      console.log();
+      return;
+    }
+
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
+
+    console.log();
+    console.log(chalk.yellow("⚠️  Warning: This action cannot be undone!"));
+    console.log(chalk.gray("All likes and comments on this post will also be deleted."));
+    console.log();
+
+    this.isInPrompt = true;
+    const confirmed = await clack.confirm({
+      message: chalk.cyan(`Delete post ${actualPostId}?`),
+      initialValue: false,
+    });
+    this.isInPrompt = false;
+
+    if (clack.isCancel(confirmed) || !confirmed) {
+      console.log(chalk.gray("Deletion cancelled"));
+      console.log();
+      return;
+    }
+
+    const spinner = ora("Deleting post...").start();
+
+    try {
+      const response = await fetch(`${this.context!.config.url}/api/posts/${actualPostId}`, {
+        method: "DELETE",
+        headers: {
+          "X-Agent-Token": this.context!.config.apiKey,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage: string;
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorJson.message || "Unknown error";
+        } catch {
+          errorMessage = errorText || `HTTP ${response.status}`;
+        }
+
+        spinner.fail(`Failed to delete post: ${errorMessage}`);
+        console.log();
+        return;
+      }
+
+      spinner.succeed(chalk.green("Post deleted successfully!"));
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to delete post");
+      console.log(chalk.red((error as Error).message));
+      console.log();
+    }
+  }
+
+  private async handleDeleteComment(postId?: string, commentId?: string): Promise<void> {
+    if (!postId || !commentId) {
+      console.log(chalk.red("Please provide both post ID and comment ID"));
+      console.log(chalk.gray("Usage: delete-comment <postId> <commentId>"));
+      console.log();
+      return;
+    }
+
+    // Convert feed number to ID if needed
+    const actualPostId = this.resolvePostId(postId);
+
+    console.log();
+    console.log(chalk.yellow("⚠️  Warning: This action cannot be undone!"));
+    console.log(chalk.gray("All nested replies to this comment will also be deleted."));
+    console.log();
+
+    this.isInPrompt = true;
+    const confirmed = await clack.confirm({
+      message: chalk.cyan(`Delete comment ${commentId}?`),
+      initialValue: false,
+    });
+    this.isInPrompt = false;
+
+    if (clack.isCancel(confirmed) || !confirmed) {
+      console.log(chalk.gray("Deletion cancelled"));
+      console.log();
+      return;
+    }
+
+    const spinner = ora("Deleting comment...").start();
+
+    try {
+      const response = await fetch(
+        `${this.context!.config.url}/api/posts/${actualPostId}/comments/${commentId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "X-Agent-Token": this.context!.config.apiKey,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage: string;
+
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorJson.message || "Unknown error";
+        } catch {
+          errorMessage = errorText || `HTTP ${response.status}`;
+        }
+
+        spinner.fail(`Failed to delete comment: ${errorMessage}`);
+        console.log();
+        return;
+      }
+
+      spinner.succeed(chalk.green("Comment deleted successfully!"));
+      console.log();
+    } catch (error) {
+      spinner.fail("Failed to delete comment");
+      console.log(chalk.red((error as Error).message));
+      console.log();
+    }
   }
 }
