@@ -136,10 +136,13 @@ export class GenerateCommand extends CommandRunner {
 
     try {
       let imageBuffer: Buffer;
+      let modelUsed: string;
 
       // Determine models to try
       const primaryModel = model || getPrimaryModel(aiProvider);
-      const fallbackModels = getFallbackModels(aiProvider);
+      // If the user explicitly specified a model, disable fallbacks so we
+      // honour their choice strictly and fail fast if it doesn't work.
+      const fallbackModels = model ? [] : getFallbackModels(aiProvider);
 
       // Pass aspect ratio and image size to generation
       const imageConfig: { aspectRatio?: string; imageSize?: string } = {};
@@ -147,7 +150,7 @@ export class GenerateCommand extends CommandRunner {
       if (imageSize) imageConfig.imageSize = imageSize;
 
       if (aiProvider === "openrouter") {
-        imageBuffer = await this.generateWithFallback(
+        ({ buffer: imageBuffer, modelUsed } = await this.generateWithFallback(
           prompt,
           size,
           apiKey,
@@ -156,35 +159,35 @@ export class GenerateCommand extends CommandRunner {
           spinner,
           sourceImageData,
           imageConfig
-        );
+        ));
       } else if (aiProvider === "openai") {
         if (sourceImageData) {
           throw new Error(
             "OpenAI does not support image-to-image generation. Use OpenRouter with a model that supports reference images."
           );
         }
-        imageBuffer = await this.generateWithFallback(
+        ({ buffer: imageBuffer, modelUsed } = await this.generateWithFallback(
           prompt,
           size,
           apiKey,
           "openai",
           { primary: primaryModel, fallbacks: fallbackModels },
           spinner
-        );
+        ));
       } else if (aiProvider === "google") {
         if (sourceImageData) {
           throw new Error(
             "Google Imagen does not support image-to-image generation. Use OpenRouter with a model that supports reference images."
           );
         }
-        imageBuffer = await this.generateWithFallback(
+        ({ buffer: imageBuffer, modelUsed } = await this.generateWithFallback(
           prompt,
           size,
           apiKey,
           "google",
           { primary: primaryModel, fallbacks: fallbackModels },
           spinner
-        );
+        ));
       } else {
         if (spinner) spinner.fail();
         throw new Error(`Unsupported AI provider: ${aiProvider}`);
@@ -212,6 +215,7 @@ export class GenerateCommand extends CommandRunner {
               output: outputPath,
               size,
               provider: aiProvider,
+              modelUsed,
             },
             null,
             2
@@ -258,7 +262,7 @@ export class GenerateCommand extends CommandRunner {
     } | null,
     sourceImageData?: string,
     imageConfig?: { aspectRatio?: string; imageSize?: string }
-  ): Promise<Buffer> {
+  ): Promise<{ buffer: Buffer; modelUsed: string }> {
     const modelsToTry = [config.primary, ...config.fallbacks].filter(
       (model): model is string => model !== null
     );
@@ -289,7 +293,7 @@ export class GenerateCommand extends CommandRunner {
           spinner.info(`Successfully generated with fallback model: ${model}`);
         }
 
-        return imageBuffer;
+        return { buffer: imageBuffer, modelUsed: model };
       } catch (error) {
         lastError = error as Error;
 
@@ -434,7 +438,12 @@ export class GenerateCommand extends CommandRunner {
 
         // If it's a URL, fetch it
         if (imageUrl.startsWith("http")) {
-          const imgRes = await fetch(imageUrl);
+          const imgRes = await fetch(imageUrl, {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            },
+          });
           const arrayBuffer = await imgRes.arrayBuffer();
           return Buffer.from(arrayBuffer);
         }
