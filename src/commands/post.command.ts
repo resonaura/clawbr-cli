@@ -1,6 +1,12 @@
 import { Command, CommandRunner, Option } from "nest-commander";
 import { readFileSync } from "fs";
-import { validateImageInput, isUrl } from "../utils/image.js";
+import {
+  validateImageInput,
+  isUrl,
+  getMimeTypeFromExtension,
+  detectMimeTypeFromBuffer,
+  normalizeMimeType,
+} from "../utils/image.js";
 import inquirer from "inquirer";
 import ora from "ora";
 import chalk from "chalk";
@@ -171,21 +177,36 @@ export class PostCommand extends CommandRunner {
             throw new Error(`Failed to fetch image from URL: ${imageResponse.statusText}`);
           }
 
-          const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
           const buffer = Buffer.from(await imageResponse.arrayBuffer());
 
-          // Determine extension from content-type
-          let extension = "jpg";
-          if (contentType.includes("png")) extension = "png";
-          else if (contentType.includes("webp")) extension = "webp";
-          else if (contentType.includes("gif")) extension = "gif";
-          else if (contentType.includes("mp4")) extension = "mp4";
-          else if (contentType.includes("webm")) extension = "webm";
-          else if (contentType.includes("quicktime")) extension = "mov";
-          else if (contentType.includes("x-msvideo")) extension = "avi";
+          // Prefer magic-byte detection for the MIME type; normalise + fall back
+          // to the Content-Type header so that non-standard aliases like
+          // 'image/jpg' or 'image/jpeg; charset=binary' don't break the upload.
+          const { fileTypeFromBuffer } = await import("file-type");
+          const detected = await fileTypeFromBuffer(buffer);
+          let contentType: string;
+          if (detected) {
+            contentType = normalizeMimeType(detected.mime);
+          } else {
+            const headerCt = imageResponse.headers.get("content-type") || "image/jpeg";
+            contentType = normalizeMimeType(headerCt);
+          }
 
-          // Use a generic filename with correct extension
-          // We can't easily rely on the URL path for redirected URLs like picsum.photos
+          // Derive a sane extension from the resolved content type
+          const ctToExt: Record<string, string> = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+            "image/gif": "gif",
+            "image/avif": "avif",
+            "image/bmp": "bmp",
+            "image/tiff": "tiff",
+            "video/mp4": "mp4",
+            "video/webm": "webm",
+            "video/quicktime": "mov",
+            "video/x-msvideo": "avi",
+          };
+          const extension = ctToExt[contentType] ?? "bin";
           const filename = `media.${extension}`;
 
           formData.append("file", buffer, { filename, contentType });
@@ -193,27 +214,15 @@ export class PostCommand extends CommandRunner {
           // Read file from disk as buffer
           const buffer = readFileSync(filePath);
 
-          // Determine content type from file extension
-          let contentType = "application/octet-stream";
-          if (filePath.match(/\.mp4$/i)) {
-            contentType = "video/mp4";
-          } else if (filePath.match(/\.webm$/i)) {
-            contentType = "video/webm";
-          } else if (filePath.match(/\.mov$/i)) {
-            contentType = "video/quicktime";
-          } else if (filePath.match(/\.avi$/i)) {
-            contentType = "video/x-msvideo";
-          } else if (filePath.match(/\.jpe?g$/i)) {
-            contentType = "image/jpeg";
-          } else if (filePath.match(/\.png$/i)) {
-            contentType = "image/png";
-          } else if (filePath.match(/\.gif$/i)) {
-            contentType = "image/gif";
-          } else if (filePath.match(/\.webp$/i)) {
-            contentType = "image/webp";
-          }
+          // Use magic-byte detection for the most reliable MIME type.
+          // Fall back to extension-based lookup if file-type can't identify it.
+          const detectedMime = await detectMimeTypeFromBuffer(buffer);
+          let contentType = detectedMime ?? getMimeTypeFromExtension(filePath);
 
-          // Extract filename from path
+          // Extra safety: also handle any aliased MIME from the extension lookup
+          contentType = normalizeMimeType(contentType);
+
+          // Extract filename from path, preserving the original extension
           const filename = filePath.split("/").pop() || "file";
 
           formData.append("file", buffer, {

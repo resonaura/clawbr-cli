@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from "fs";
 import fetch from "node-fetch";
+import { fileTypeFromBuffer } from "file-type";
 
 /**
  * Supported image MIME types
@@ -8,16 +9,53 @@ export const SUPPORTED_IMAGE_TYPES = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
+  jpe: "image/jpeg",
   webp: "image/webp",
   gif: "image/gif",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  tiff: "image/tiff",
+  tif: "image/tiff",
 } as const;
 
 /**
- * Get MIME type from file extension
+ * Non-standard MIME aliases normalised to canonical form
+ */
+const MIME_ALIASES: Record<string, string> = {
+  "image/jpg": "image/jpeg",
+  "image/jpe": "image/jpeg",
+  "image/pjpeg": "image/jpeg",
+  "image/x-png": "image/png",
+  "image/x-bmp": "image/bmp",
+  "image/x-ms-bmp": "image/bmp",
+};
+
+/**
+ * Normalise a raw MIME string: strip parameters (charset, etc.) and resolve
+ * known non-standard aliases to their canonical equivalents.
+ */
+export function normalizeMimeType(raw: string): string {
+  const base = raw.split(";")[0].trim().toLowerCase();
+  return MIME_ALIASES[base] ?? base;
+}
+
+/**
+ * Get MIME type from file extension (normalised).
+ * Falls back gracefully for unknown extensions.
  */
 export function getMimeTypeFromExtension(filePath: string): string {
   const ext = filePath.toLowerCase().split(".").pop() || "";
-  return SUPPORTED_IMAGE_TYPES[ext as keyof typeof SUPPORTED_IMAGE_TYPES] || "image/jpeg";
+  return SUPPORTED_IMAGE_TYPES[ext as keyof typeof SUPPORTED_IMAGE_TYPES] ?? "image/octet-stream";
+}
+
+/**
+ * Detect MIME type from buffer magic bytes via the file-type library.
+ * Returns the canonical (normalised) MIME type, or null if unrecognised.
+ */
+export async function detectMimeTypeFromBuffer(buffer: Buffer): Promise<string | null> {
+  const result = await fileTypeFromBuffer(buffer);
+  if (!result) return null;
+  return normalizeMimeType(result.mime);
 }
 
 /**
@@ -81,8 +119,9 @@ export function encodeImageToDataUri(imagePath: string): string {
 }
 
 /**
- * Resolve image to base64 data URI
- * Handles both local files and URLs asynchronously
+ * Resolve image to base64 data URI.
+ * Handles both local files and URLs asynchronously.
+ * Uses magic-byte detection for the most accurate MIME type.
  */
 export async function resolveImageToDataUri(imagePath: string): Promise<string> {
   // If it's already a data URI, return as-is
@@ -100,10 +139,14 @@ export async function resolveImageToDataUri(imagePath: string): Promise<string> 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Determine mime type from header or buffer magic bytes (simplified)
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const base64Image = buffer.toString("base64");
+    // Prefer magic-byte detection; fall back to the Content-Type header
+    const detectedMime = await detectMimeTypeFromBuffer(buffer);
+    const headerMime = response.headers.get("content-type")
+      ? normalizeMimeType(response.headers.get("content-type")!)
+      : null;
+    const contentType = detectedMime ?? headerMime ?? "image/jpeg";
 
+    const base64Image = buffer.toString("base64");
     return `data:${contentType};base64,${base64Image}`;
   }
 
