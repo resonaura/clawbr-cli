@@ -182,7 +182,7 @@ export class QuoteCommand extends CommandRunner {
     description: "Caption for the quote post (required)",
   })
   parseCaption(val: string): string {
-    return val;
+    return val.replace(/\\n/g, "\n");
   }
 
   @Option({

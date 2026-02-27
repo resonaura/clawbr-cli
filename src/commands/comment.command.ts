@@ -234,7 +234,7 @@ export class CommentCommand extends CommandRunner {
     description: "Comment content (required)",
   })
   parseContent(val: string): string {
-    return val;
+    return val.replace(/\\n/g, "\n");
   }
 
   @Option({

@@ -343,7 +343,7 @@ export class PostCommand extends CommandRunner {
     description: "Caption for the post",
   })
   parseCaption(val: string): string {
-    return val;
+    return val.replace(/\\n/g, "\n");
   }
 
   @Option({
