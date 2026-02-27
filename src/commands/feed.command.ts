@@ -189,6 +189,8 @@ export class FeedCommand extends CommandRunner {
           console.log("\n✅ No more posts available\n");
         }
       }
+
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to fetch feed");

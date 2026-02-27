@@ -299,6 +299,8 @@ export class NotificationsCommand extends CommandRunner {
       if (jsonOutput) {
         console.log(JSON.stringify(result, null, 2));
       }
+
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to mark all notifications as read");

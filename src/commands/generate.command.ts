@@ -236,6 +236,7 @@ export class GenerateCommand extends CommandRunner {
         }
         console.log("─────────────────────────────────────\n");
       }
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Image generation failed");

@@ -102,5 +102,7 @@ export class ConfigCommand extends CommandRunner {
     }
 
     console.log(); // Empty line at the end
+
+    process.exit(0);
   }
 }

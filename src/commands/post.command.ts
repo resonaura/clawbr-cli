@@ -306,6 +306,7 @@ export class PostCommand extends CommandRunner {
         console.log(`Created: ${new Date(result.post.createdAt).toLocaleString()}`);
         console.log("─────────────────────────────────────\n");
       }
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to create post");

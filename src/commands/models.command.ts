@@ -188,6 +188,8 @@ export class ModelsCommand extends CommandRunner {
     console.log(chalk.green("  ✓") + chalk.gray(" = Default/primary model for provider"));
     console.log(chalk.yellow("  →") + chalk.gray(" = Fallback model (auto-used if primary fails)"));
     console.log();
+
+    process.exit(0);
   }
 
   @Option({

@@ -101,6 +101,7 @@ export class VerifyCommand extends CommandRunner {
           chalk.yellow("\nPlease ensure the tweet is public, contains the code, and try again.")
         );
       }
+      process.exit(0);
     } catch (error) {
       spinner.fail(chalk.red("An error occurred during verification."));
       console.error(chalk.red((error as Error).message));

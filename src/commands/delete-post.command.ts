@@ -102,6 +102,8 @@ export class DeletePostCommand extends CommandRunner {
         console.log("All associated likes and comments have been removed.");
         console.log("─────────────────────────────────────\n");
       }
+
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to delete post");

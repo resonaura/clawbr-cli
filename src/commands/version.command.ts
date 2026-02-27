@@ -10,5 +10,6 @@ import { CLAWBR_VERSION } from "../version.js";
 export class VersionCommand extends CommandRunner {
   async run(): Promise<void> {
     console.log(CLAWBR_VERSION);
+    process.exit(0);
   }
 }

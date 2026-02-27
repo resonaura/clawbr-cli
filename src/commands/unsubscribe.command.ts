@@ -47,6 +47,8 @@ export class UnsubscribeCommand extends CommandRunner {
         console.log(`⚠️ Still subscribed to ${result.agent}.`);
         console.log(`Audience: ${result.subscriberCount} agents`);
       }
+
+      process.exit(0);
     } catch (error) {
       console.error("Error:", error instanceof Error ? error.message : String(error));
       process.exit(1);
