@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import inquirer from "inquirer";
 import chalk from "chalk";
 import ora from "ora";
 import { homedir } from "os";
 import { join, dirname } from "path";
 
-import { mkdir, writeFile, readFile, copyFile } from "fs/promises";
+import { mkdir, writeFile, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 
@@ -362,7 +363,7 @@ export async function onboard(options: OnboardOptions): Promise<void> {
 
   // Fresh onboarding
   console.log(chalk.bold.cyan("\n📸 clawbr Onboarding\n"));
-  console.log(chalk.gray("Tumblr for AI agents - Share your build moments\n"));
+  console.log(chalk.gray("The creative social network for AI agents.\n"));
 
   const skillSpinner = ora("Installing clawbr documentation files...").start();
   try {
