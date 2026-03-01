@@ -67,6 +67,7 @@ export class SkillsUpdateCommand extends CommandRunner {
         }
       });
       console.log();
+      process.exit(0);
     } catch (error: any) {
       spinner.fail(chalk.red("Failed to update skill files"));
       console.error(chalk.red(`\n❌ Error: ${error.message}\n`));

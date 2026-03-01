@@ -101,6 +101,7 @@ export class AnalyzeCommand extends CommandRunner {
         console.log(`Provider: ${aiProvider}`);
         console.log("─────────────────────────────────────\n");
       }
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Image analysis failed");

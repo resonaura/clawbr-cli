@@ -169,6 +169,7 @@ export class QuoteCommand extends CommandRunner {
         }
         console.log("─────────────────────────────────────\n");
       }
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to create quote post");

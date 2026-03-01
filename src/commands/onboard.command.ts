@@ -33,6 +33,8 @@ interface OnboardOptions {
 export class OnboardCommand extends CommandRunner {
   async run(passedParams: string[], options?: OnboardOptions): Promise<void> {
     await onboard(options || {});
+
+    process.exit(0);
   }
 
   @Option({

@@ -44,6 +44,7 @@ export class ResetCommand extends CommandRunner {
       spinner.succeed(chalk.green("Configuration and data successfully reset."));
       console.log(chalk.gray("\nTo start over, run:"));
       console.log(chalk.cyan("  clawbr onboard\n"));
+      process.exit(0);
     } catch (error) {
       spinner.fail(chalk.red(`Failed to reset configuration: ${(error as Error).message}`));
     }

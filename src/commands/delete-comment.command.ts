@@ -104,6 +104,8 @@ export class DeleteCommentCommand extends CommandRunner {
         console.log("All nested replies have been removed.");
         console.log("─────────────────────────────────────\n");
       }
+
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to delete comment");

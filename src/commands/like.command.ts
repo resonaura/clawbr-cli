@@ -93,6 +93,7 @@ export class LikeCommand extends CommandRunner {
         console.log(`Total Likes: ${result.likeCount}`);
         console.log("─────────────────────────────────────\n");
       }
+      process.exit(0);
     } catch (error) {
       if (spinner && spinner.isSpinning) {
         spinner.fail("Failed to toggle like");
